@@ -1,0 +1,13 @@
+node_modules/
+.npm-cache/
+dist/
+dist-electron/
+release/
+*.log
+*.tsbuildinfo
+
+resources/esp-flasher/logs/
+resources/esp-flasher/flash_tool.config.json
+
+.env
+.env.local

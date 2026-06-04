@@ -1,0 +1,384 @@
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+type EspAction = "Doctor" | "ListPorts" | "Build" | "Flash" | "Erase" | "Monitor";
+
+type EspConfig = {
+  chip: string;
+  port: string;
+  baud: number;
+  monitorBaud: number;
+  idfExport: string;
+  projectDir: string;
+  firmwareDir: string;
+  skipBuildOnFlash: boolean;
+  autoPort: boolean;
+  manualDownloadMode: boolean;
+  openMonitorAfterFlash: boolean;
+  logDir: string;
+};
+
+type RunningAction = {
+  id: string;
+  process: ChildProcessWithoutNullStreams;
+};
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+let mainWindow: BrowserWindow | null = null;
+let runningAction: RunningAction | null = null;
+
+const defaultConfig: EspConfig = {
+  chip: "esp32",
+  port: "AUTO",
+  baud: 460800,
+  monitorBaud: 115200,
+  idfExport: "C:\\esp\\v5.4.4\\esp-idf\\export.bat",
+  projectDir: "",
+  firmwareDir: "",
+  skipBuildOnFlash: true,
+  autoPort: true,
+  manualDownloadMode: true,
+  openMonitorAfterFlash: false,
+  logDir: "logs"
+};
+
+function getEspToolDir() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "esp-flasher");
+  }
+
+  return path.join(app.getAppPath(), "resources", "esp-flasher");
+}
+
+function getUserEspDir() {
+  return path.join(app.getPath("userData"), "esp-flasher");
+}
+
+function getUserConfigPath() {
+  return path.join(getUserEspDir(), "flash_tool.config.json");
+}
+
+function readJsonFile<T>(filePath: string, fallback: T): T {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function sanitizeConfig(input: Partial<EspConfig> | null | undefined): EspConfig {
+  const merged = { ...defaultConfig, ...(input ?? {}) };
+
+  return {
+    chip: String(merged.chip || "esp32").trim().toLowerCase(),
+    port: String(merged.port || "AUTO").trim().toUpperCase(),
+    baud: Number(merged.baud) || defaultConfig.baud,
+    monitorBaud: Number(merged.monitorBaud) || defaultConfig.monitorBaud,
+    idfExport: String(merged.idfExport || ""),
+    projectDir: String(merged.projectDir || ""),
+    firmwareDir: String(merged.firmwareDir || ""),
+    skipBuildOnFlash: Boolean(merged.skipBuildOnFlash),
+    autoPort: Boolean(merged.autoPort),
+    manualDownloadMode: Boolean(merged.manualDownloadMode),
+    openMonitorAfterFlash: Boolean(merged.openMonitorAfterFlash),
+    logDir: String(merged.logDir || "logs")
+  };
+}
+
+function readDefaultConfig() {
+  const examplePath = path.join(getEspToolDir(), "flash_tool.config.example.json");
+  return sanitizeConfig(readJsonFile<Partial<EspConfig>>(examplePath, defaultConfig));
+}
+
+function ensureUserConfig() {
+  const userDir = getUserEspDir();
+  const configPath = getUserConfigPath();
+
+  if (!fs.existsSync(userDir)) {
+    fs.mkdirSync(userDir, { recursive: true });
+  }
+
+  if (!fs.existsSync(configPath)) {
+    fs.writeFileSync(configPath, JSON.stringify(readDefaultConfig(), null, 2), "utf8");
+  }
+}
+
+function readUserConfig() {
+  ensureUserConfig();
+  return sanitizeConfig(readJsonFile<Partial<EspConfig>>(getUserConfigPath(), readDefaultConfig()));
+}
+
+function writeUserConfig(config: Partial<EspConfig>) {
+  ensureUserConfig();
+  const sanitized = sanitizeConfig(config);
+  fs.writeFileSync(getUserConfigPath(), JSON.stringify(sanitized, null, 2), "utf8");
+  return sanitized;
+}
+
+function quotePowerShellString(value: string) {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function buildEncodedPowerShell(command: string) {
+  return Buffer.from(command, "utf16le").toString("base64");
+}
+
+function buildPowerShellInvocation(scriptPath: string, args: string[]) {
+  const tokens = [
+    quotePowerShellString(scriptPath),
+    ...args.map((arg) => (arg.startsWith("-") ? arg : quotePowerShellString(arg)))
+  ];
+
+  return [
+    "$OutputEncoding = [System.Text.UTF8Encoding]::new()",
+    "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()",
+    `$env:PYTHONIOENCODING = 'utf-8'`,
+    `& ${tokens.join(" ")}`
+  ].join("; ");
+}
+
+function spawnPowerShell(command: string, cwd: string) {
+  return spawn(
+    "powershell.exe",
+    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", buildEncodedPowerShell(command)],
+    {
+      cwd,
+      windowsHide: true,
+      env: {
+        ...process.env,
+        PYTHONIOENCODING: "utf-8"
+      }
+    }
+  );
+}
+
+function getRunArgs(action: EspAction, config: EspConfig) {
+  const args = [
+    "-Action",
+    action,
+    "-Config",
+    getUserConfigPath(),
+    "-NoPause",
+    "-Chip",
+    config.chip,
+    "-Port",
+    config.port,
+    "-Baud",
+    String(config.baud),
+    "-MonitorBaud",
+    String(config.monitorBaud)
+  ];
+
+  if (config.idfExport) {
+    args.push("-IdfExport", config.idfExport);
+  }
+
+  if (config.projectDir) {
+    args.push("-ProjectDir", config.projectDir);
+  }
+
+  if (config.firmwareDir) {
+    args.push("-FirmwareDir", config.firmwareDir);
+  }
+
+  if (config.skipBuildOnFlash && action === "Flash") {
+    args.push("-SkipBuild");
+  }
+
+  if (config.autoPort) {
+    args.push("-AutoPort");
+  }
+
+  if (config.openMonitorAfterFlash && action === "Flash") {
+    args.push("-OpenMonitorAfterFlash");
+  }
+
+  return args;
+}
+
+async function runListPorts() {
+  const script = [
+    "$OutputEncoding = [System.Text.UTF8Encoding]::new()",
+    "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()",
+    "$ports = @([System.IO.Ports.SerialPort]::GetPortNames() | Sort-Object { if ($_ -match '^COM(\\d+)$') { [int]$Matches[1] } else { 9999 } })",
+    "[Console]::Out.Write(($ports | ConvertTo-Json -Compress))"
+  ].join("; ");
+
+  return new Promise<string[]>((resolve) => {
+    const child = spawnPowerShell(script, getEspToolDir());
+    let output = "";
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      output += chunk.toString("utf8");
+    });
+
+    child.on("close", () => {
+      try {
+        const parsed = JSON.parse(output.trim() || "[]") as string[] | string;
+        resolve(Array.isArray(parsed) ? parsed : [parsed]);
+      } catch {
+        resolve([]);
+      }
+    });
+
+    child.on("error", () => resolve([]));
+  });
+}
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1320,
+    height: 860,
+    minWidth: 1080,
+    minHeight: 720,
+    title: "AKI-TOOL",
+    backgroundColor: "#f4f1ea",
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+  if (devServerUrl) {
+    void mainWindow.loadURL(devServerUrl);
+  } else {
+    void mainWindow.loadFile(path.join(app.getAppPath(), "dist", "index.html"));
+  }
+}
+
+app.whenReady().then(() => {
+  createWindow();
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
+});
+
+ipcMain.handle("app:get-meta", () => ({
+  name: "AKI-TOOL",
+  version: app.getVersion()
+}));
+
+ipcMain.handle("esp:get-config", () => ({
+  config: readUserConfig(),
+  configPath: getUserConfigPath(),
+  toolDir: getEspToolDir(),
+  userDataDir: getUserEspDir()
+}));
+
+ipcMain.handle("esp:save-config", (_event, config: Partial<EspConfig>) => ({
+  config: writeUserConfig(config),
+  configPath: getUserConfigPath()
+}));
+
+ipcMain.handle("esp:list-ports", runListPorts);
+
+ipcMain.handle("esp:run-action", (_event, payload: { action: EspAction; config: Partial<EspConfig> }) => {
+  if (runningAction && !runningAction.process.killed) {
+    throw new Error("已有任务正在执行。");
+  }
+
+  const actionId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const config = writeUserConfig(payload.config);
+  const toolDir = getEspToolDir();
+  const scriptPath = path.join(toolDir, "esp_flash_tool.ps1");
+  const command = buildPowerShellInvocation(scriptPath, getRunArgs(payload.action, config));
+  const child = spawnPowerShell(command, toolDir);
+  runningAction = { id: actionId, process: child };
+
+  child.stdout.on("data", (chunk: Buffer) => {
+    mainWindow?.webContents.send("esp:action-output", {
+      id: actionId,
+      stream: "stdout",
+      text: chunk.toString("utf8")
+    });
+  });
+
+  child.stderr.on("data", (chunk: Buffer) => {
+    mainWindow?.webContents.send("esp:action-output", {
+      id: actionId,
+      stream: "stderr",
+      text: chunk.toString("utf8")
+    });
+  });
+
+  child.on("error", (error) => {
+    mainWindow?.webContents.send("esp:action-output", {
+      id: actionId,
+      stream: "stderr",
+      text: `${error.message}\n`
+    });
+  });
+
+  child.on("close", (exitCode, signal) => {
+    if (runningAction?.id === actionId) {
+      runningAction = null;
+    }
+
+    mainWindow?.webContents.send("esp:action-finished", {
+      id: actionId,
+      exitCode,
+      signal
+    });
+  });
+
+  return { id: actionId };
+});
+
+ipcMain.handle("esp:stop-action", async () => {
+  if (!runningAction) {
+    return false;
+  }
+
+  const pid = runningAction.process.pid;
+  if (process.platform === "win32" && pid) {
+    spawn("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { windowsHide: true });
+  } else {
+    runningAction.process.kill("SIGTERM");
+  }
+
+  return true;
+});
+
+ipcMain.handle("dialog:select-directory", async () => {
+  if (!mainWindow) {
+    return "";
+  }
+
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory"]
+  });
+
+  return result.canceled ? "" : result.filePaths[0] ?? "";
+});
+
+ipcMain.handle("dialog:select-file", async (_event, options?: { title?: string; filters?: Electron.FileFilter[] }) => {
+  if (!mainWindow) {
+    return "";
+  }
+
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: options?.title,
+    filters: options?.filters,
+    properties: ["openFile"]
+  });
+
+  return result.canceled ? "" : result.filePaths[0] ?? "";
+});
+
+ipcMain.handle("shell:open-path", (_event, targetPath: string) => shell.openPath(targetPath));
