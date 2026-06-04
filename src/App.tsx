@@ -44,9 +44,9 @@ const baudOptions = [115200, 230400, 460800, 921600, 1500000];
 
 const toolItems = [
   { id: "esp", name: "ESP 烧录", meta: "flash / monitor", icon: Cpu, active: true },
-  { id: "serial", name: "串口日志", meta: "coming soon", icon: Terminal, active: false },
-  { id: "package", name: "固件包", meta: "coming soon", icon: HardDriveDownload, active: false },
-  { id: "settings", name: "全局设置", meta: "coming soon", icon: Settings2, active: false }
+  { id: "serial", name: "串口日志", meta: "未开放", icon: Terminal, active: false },
+  { id: "package", name: "固件包", meta: "未开放", icon: HardDriveDownload, active: false },
+  { id: "settings", name: "全局设置", meta: "未开放", icon: Settings2, active: false }
 ];
 
 const actionItems: Array<{
@@ -70,9 +70,15 @@ function actionLabel(action: EspAction) {
   return actionItems.find((item) => item.action === action)?.label ?? action;
 }
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function App() {
   const api = useMemo(() => getAkiApi(), []);
+  const isDesktop = useMemo(() => Boolean(window.aki), []);
   const terminalRef = useRef<HTMLPreElement | null>(null);
+  const stopRequestedRef = useRef(false);
 
   const [config, setConfig] = useState<EspConfig>(initialConfig);
   const [ports, setPorts] = useState<string[]>([]);
@@ -96,18 +102,30 @@ function App() {
   }, []);
 
   const refreshPorts = useCallback(async () => {
-    const nextPorts = await api.esp.listPorts();
-    setPorts(nextPorts);
-    setStatusText(nextPorts.length > 0 ? `发现 ${nextPorts.length} 个串口` : "未发现串口");
-  }, [api]);
+    setStatusText("正在刷新串口");
+    try {
+      const nextPorts = await api.esp.listPorts();
+      setPorts(nextPorts);
+      setStatusText(nextPorts.length > 0 ? `发现 ${nextPorts.length} 个串口` : "未发现串口");
+    } catch (error) {
+      setPorts([]);
+      setStatusText("串口刷新失败");
+      appendLog(`串口刷新失败: ${getErrorMessage(error)}\n`);
+    }
+  }, [api, appendLog]);
 
   const loadConfig = useCallback(async () => {
-    const payload = await api.esp.getConfig();
-    setConfig(payload.config);
-    setConfigPath(payload.configPath);
-    setToolDir(payload.toolDir);
-    setUserDataDir(payload.userDataDir);
-  }, [api]);
+    try {
+      const payload = await api.esp.getConfig();
+      setConfig(payload.config);
+      setConfigPath(payload.configPath);
+      setToolDir(payload.toolDir);
+      setUserDataDir(payload.userDataDir);
+    } catch (error) {
+      setStatusText("配置加载失败");
+      appendLog(`配置加载失败: ${getErrorMessage(error)}\n`);
+    }
+  }, [api, appendLog]);
 
   useEffect(() => {
     void loadConfig();
@@ -120,11 +138,17 @@ function App() {
     });
 
     const offFinished = api.esp.onActionFinished((event: ActionFinishedEvent) => {
+      const wasStopRequested = stopRequestedRef.current;
+      stopRequestedRef.current = false;
       setIsRunning(false);
       setActiveAction("");
       setLastExitCode(event.exitCode);
-      setStatusText(event.exitCode === 0 ? "执行完成" : "执行失败");
-      appendLog(`\n进程已退出，退出码 ${event.exitCode ?? event.signal ?? "unknown"}。\n`);
+      setStatusText(wasStopRequested ? "已停止" : event.exitCode === 0 ? "执行完成" : "执行失败");
+      appendLog(
+        wasStopRequested
+          ? `\n任务已停止，退出码 ${event.exitCode ?? event.signal ?? "unknown"}。\n`
+          : `\n进程已退出，退出码 ${event.exitCode ?? event.signal ?? "unknown"}。\n`
+      );
     });
 
     return () => {
@@ -140,15 +164,22 @@ function App() {
   }, [logText]);
 
   async function saveConfig() {
-    const payload = await api.esp.saveConfig(config);
-    setConfig(payload.config);
-    setConfigPath(payload.configPath);
-    setStatusText("配置已保存");
+    setStatusText("正在保存配置");
+    try {
+      const payload = await api.esp.saveConfig(config);
+      setConfig(payload.config);
+      setConfigPath(payload.configPath);
+      setStatusText("配置已保存");
+    } catch (error) {
+      setStatusText("配置保存失败");
+      appendLog(`配置保存失败: ${getErrorMessage(error)}\n`);
+    }
   }
 
   async function runAction(action: EspAction) {
     setLogText("");
     setLastExitCode(null);
+    stopRequestedRef.current = false;
     setIsRunning(true);
     setActiveAction(action);
     setStatusText(`正在${actionLabel(action)}`);
@@ -160,40 +191,124 @@ function App() {
       setIsRunning(false);
       setActiveAction("");
       setStatusText("启动失败");
-      appendLog(`启动失败: ${error instanceof Error ? error.message : String(error)}\n`);
+      appendLog(`启动失败: ${getErrorMessage(error)}\n`);
     }
   }
 
   async function stopAction() {
-    await api.esp.stopAction();
     setStatusText("停止中");
+    try {
+      const stopped = await api.esp.stopAction();
+      stopRequestedRef.current = stopped;
+      setStatusText(stopped ? "停止中" : "没有运行中的任务");
+    } catch (error) {
+      stopRequestedRef.current = false;
+      setStatusText("停止失败");
+      appendLog(`停止失败: ${getErrorMessage(error)}\n`);
+    }
   }
 
   async function chooseDirectory(key: "projectDir" | "firmwareDir") {
-    const selected = await api.dialog.selectDirectory();
-    if (selected) {
-      setField(key, selected);
+    const label = key === "projectDir" ? "项目目录" : "固件目录";
+    setStatusText(`选择${label}`);
+    try {
+      const selected = await api.dialog.selectDirectory();
+      if (selected) {
+        setField(key, selected);
+        setStatusText(`${label}已选择`);
+        return;
+      }
+
+      if (isDesktop) {
+        setStatusText("已取消选择");
+      } else {
+        setStatusText("预览模式不支持选目录");
+        appendLog("浏览器预览模式不支持选择本机目录，请运行 AKI-TOOL 桌面版。\n");
+      }
+    } catch (error) {
+      setStatusText(`${label}选择失败`);
+      appendLog(`${label}选择失败: ${getErrorMessage(error)}\n`);
     }
   }
 
   async function chooseIdfExport() {
-    const selected = await api.dialog.selectFile({
-      title: "选择 ESP-IDF export.bat",
-      filters: [
-        { name: "export.bat", extensions: ["bat"] },
-        { name: "批处理文件", extensions: ["bat", "cmd"] },
-        { name: "所有文件", extensions: ["*"] }
-      ]
-    });
-    if (selected) {
-      setField("idfExport", selected);
+    setStatusText("选择 ESP-IDF export");
+    try {
+      const selected = await api.dialog.selectFile({
+        title: "选择 ESP-IDF export.bat",
+        filters: [
+          { name: "export.bat", extensions: ["bat"] },
+          { name: "批处理文件", extensions: ["bat", "cmd"] },
+          { name: "所有文件", extensions: ["*"] }
+        ]
+      });
+      if (selected) {
+        setField("idfExport", selected);
+        setStatusText("ESP-IDF export 已选择");
+        return;
+      }
+
+      if (isDesktop) {
+        setStatusText("已取消选择");
+      } else {
+        setStatusText("预览模式不支持选文件");
+        appendLog("浏览器预览模式不支持选择本机文件，请运行 AKI-TOOL 桌面版。\n");
+      }
+    } catch (error) {
+      setStatusText("export 选择失败");
+      appendLog(`export 选择失败: ${getErrorMessage(error)}\n`);
     }
   }
 
   async function copyLog() {
-    if (logText.trim()) {
+    if (!logText.trim()) {
+      setStatusText("没有可复制日志");
+      return;
+    }
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("当前环境不支持剪贴板写入。");
+      }
+
       await navigator.clipboard.writeText(logText);
       setStatusText("日志已复制");
+    } catch (error) {
+      setStatusText("日志复制失败");
+      appendLog(`日志复制失败: ${getErrorMessage(error)}\n`);
+    }
+  }
+
+  function clearLog() {
+    setLogText("");
+    setStatusText("日志已清空");
+  }
+
+  async function openQuickPath(targetPath: string, label: string) {
+    if (!targetPath) {
+      setStatusText(`${label}未加载`);
+      return;
+    }
+
+    if (!isDesktop) {
+      setStatusText("预览模式不支持打开目录");
+      appendLog("浏览器预览模式不支持打开本机目录，请运行 AKI-TOOL 桌面版。\n");
+      return;
+    }
+
+    setStatusText(`打开${label}`);
+    try {
+      const result = await api.shell.openPath(targetPath);
+      if (result) {
+        setStatusText(`${label}打开失败`);
+        appendLog(`${label}打开失败: ${result}\n`);
+        return;
+      }
+
+      setStatusText(`已打开${label}`);
+    } catch (error) {
+      setStatusText(`${label}打开失败`);
+      appendLog(`${label}打开失败: ${getErrorMessage(error)}\n`);
     }
   }
 
@@ -220,7 +335,7 @@ function App() {
                 key={item.id}
                 className={`tool-nav-item ${item.active ? "active" : ""}`}
                 disabled={!item.active}
-                title={item.name}
+                title={item.active ? item.name : `${item.name}暂未开放`}
               >
                 <Icon size={18} />
                 <span>
@@ -437,11 +552,11 @@ function App() {
             </div>
 
             <div className="quick-paths">
-              <button type="button" onClick={() => userDataDir && api.shell.openPath(userDataDir)} disabled={!userDataDir}>
+              <button type="button" onClick={() => void openQuickPath(userDataDir, "用户数据")} disabled={!userDataDir}>
                 <FolderOpen size={16} />
                 用户数据
               </button>
-              <button type="button" onClick={() => toolDir && api.shell.openPath(toolDir)} disabled={!toolDir}>
+              <button type="button" onClick={() => void openQuickPath(toolDir, "后端目录")} disabled={!toolDir}>
                 <FolderOpen size={16} />
                 后端目录
               </button>
@@ -458,7 +573,7 @@ function App() {
                 <button type="button" className="icon-button" onClick={copyLog} title="复制日志">
                   <Copy size={18} />
                 </button>
-                <button type="button" className="icon-button" onClick={() => setLogText("")} title="清空日志">
+                <button type="button" className="icon-button" onClick={clearLog} title="清空日志">
                   <Trash2 size={18} />
                 </button>
               </div>
