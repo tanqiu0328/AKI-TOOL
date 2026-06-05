@@ -29,6 +29,28 @@ if ([string]::IsNullOrWhiteSpace($browser)) {
     throw "No Edge or Chrome executable found."
 }
 
+$pythonCommand = ""
+$pythonArgs = @()
+foreach ($candidate in @(
+        @{ Command = "python"; Args = @() },
+        @{ Command = "py"; Args = @("-3") }
+    )) {
+    try {
+        & $candidate.Command @($candidate.Args) --version *> $null
+        if ($LASTEXITCODE -eq 0) {
+            $pythonCommand = $candidate.Command
+            $pythonArgs = @($candidate.Args)
+            break
+        }
+    } catch {
+        continue
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($pythonCommand)) {
+    throw "No usable Python executable found."
+}
+
 $outputDir = Split-Path -Parent $Output
 if (-not (Test-Path -LiteralPath $outputDir)) {
     New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
@@ -40,9 +62,9 @@ if ($existing.Count -gt 0) {
 }
 
 $job = Start-Job -ScriptBlock {
-    param($ServeDir, $ServePort)
-    python -m http.server $ServePort --bind 127.0.0.1 --directory $ServeDir
-} -ArgumentList $dist, $Port
+    param($PythonCommand, $PythonArgs, $ServeDir, $ServePort)
+    & $PythonCommand @PythonArgs -m http.server $ServePort --bind 127.0.0.1 --directory $ServeDir
+} -ArgumentList $pythonCommand, $pythonArgs, $dist, $Port
 
 try {
     $ready = $false

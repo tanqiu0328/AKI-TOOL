@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import http from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -12,7 +13,7 @@ const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.
 const args = new Set(process.argv.slice(2));
 const target = args.has("--electron") ? "electron" : args.has("--packaged") ? "packaged" : "preview";
 const port = Number(process.env.AKI_SMOKE_PORT || (target === "preview" ? 9224 : 9225));
-const pageUrl = pathToFileURL(path.join(repoRoot, "dist", "index.html")).href;
+let pageUrl = pathToFileURL(path.join(repoRoot, "dist", "index.html")).href;
 const userDataDir = path.join(os.tmpdir(), `aki-tool-smoke-${target}-${port}`);
 const debug = process.env.AKI_SMOKE_DEBUG === "1" || args.has("--debug");
 
@@ -67,6 +68,68 @@ function commandForTarget() {
     command: electronExe,
     args: [`--remote-debugging-port=${port}`, "."]
   };
+}
+
+function contentTypeFor(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === ".html") {
+    return "text/html; charset=utf-8";
+  }
+  if (ext === ".js") {
+    return "text/javascript; charset=utf-8";
+  }
+  if (ext === ".css") {
+    return "text/css; charset=utf-8";
+  }
+  if (ext === ".svg") {
+    return "image/svg+xml";
+  }
+  if (ext === ".png") {
+    return "image/png";
+  }
+
+  return "application/octet-stream";
+}
+
+function startStaticServer(rootDir) {
+  const root = path.resolve(rootDir);
+
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((request, response) => {
+      const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
+      const pathname = decodeURIComponent(requestUrl.pathname);
+      const relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+      const filePath = path.resolve(root, relativePath);
+
+      if (filePath !== root && !filePath.startsWith(`${root}${path.sep}`)) {
+        response.writeHead(403);
+        response.end("Forbidden");
+        return;
+      }
+
+      fs.readFile(filePath, (error, data) => {
+        if (error) {
+          response.writeHead(404);
+          response.end("Not found");
+          return;
+        }
+
+        response.writeHead(200, { "Content-Type": contentTypeFor(filePath) });
+        response.end(data);
+      });
+    });
+
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        reject(new Error("静态预览服务启动失败。"));
+        return;
+      }
+
+      resolve({ server, port: address.port });
+    });
+  });
 }
 
 async function waitForJsonList() {
@@ -329,6 +392,12 @@ async function waitForApp(client) {
 }
 
 async function main() {
+  let staticPreview = null;
+  if (target === "preview") {
+    staticPreview = await startStaticServer(path.join(repoRoot, "dist"));
+    pageUrl = `http://127.0.0.1:${staticPreview.port}/index.html`;
+  }
+
   const launch = commandForTarget();
   const child = spawn(launch.command, launch.args, {
     cwd: repoRoot,
@@ -347,6 +416,13 @@ async function main() {
     } catch {
       // Already exited.
     }
+
+    await new Promise((resolve) => {
+      staticPreview?.server.close(() => resolve());
+      if (!staticPreview) {
+        resolve();
+      }
+    });
   };
 
   try {

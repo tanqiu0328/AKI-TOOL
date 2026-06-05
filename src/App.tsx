@@ -105,8 +105,10 @@ function App() {
     setStatusText("正在刷新串口");
     try {
       const nextPorts = await api.esp.listPorts();
+      const nextStatusText = nextPorts.length > 0 ? `发现 ${nextPorts.length} 个串口` : "未发现串口";
       setPorts(nextPorts);
-      setStatusText(nextPorts.length > 0 ? `发现 ${nextPorts.length} 个串口` : "未发现串口");
+      setStatusText(nextStatusText);
+      appendLog(`串口刷新: ${nextStatusText}。\n`);
     } catch (error) {
       setPorts([]);
       setStatusText("串口刷新失败");
@@ -314,15 +316,21 @@ function App() {
 
   const portStateText = ports.length > 0 ? `${ports.length} 个串口` : "未发现";
   const runStateClass = isRunning ? "running" : lastExitCode === 0 ? "ok" : lastExitCode === null ? "idle" : "error";
+  const activeActionText = activeAction ? actionLabel(activeAction) : statusText;
+  const primaryAction = actionItems.find((item) => item.action === "Flash") ?? actionItems[0];
+  const secondaryActions = actionItems.filter((item) => ["Doctor", "Build", "Monitor"].includes(item.action));
+  const eraseAction = actionItems.find((item) => item.action === "Erase") ?? actionItems[0];
+  const PrimaryIcon = primaryAction.icon;
+  const EraseIcon = eraseAction.icon;
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-block">
           <div className="brand-mark">AK</div>
-          <div>
+          <div className="brand-copy">
             <div className="brand-name">AKI-TOOL</div>
-            <div className="brand-subtitle">desktop utility suite</div>
+            <div className="brand-subtitle">ESP utility console</div>
           </div>
         </div>
 
@@ -347,6 +355,17 @@ function App() {
           })}
         </nav>
 
+        <div className="sidebar-metrics" aria-label="工具概览">
+          <div>
+            <span>当前工具</span>
+            <strong>ESP 烧录</strong>
+          </div>
+          <div>
+            <span>串口检测</span>
+            <strong>{portStateText}</strong>
+          </div>
+        </div>
+
         <div className="sidebar-footer">
           <div className={`state-dot ${runStateClass}`} />
           <span>{statusText}</span>
@@ -355,40 +374,47 @@ function App() {
 
       <main className="workspace">
         <header className="workspace-header">
-          <div>
+          <div className="title-block">
             <div className="eyebrow">ESP FLASHER</div>
             <h1>ESP 烧录工作台</h1>
+            <p>配置、编译、烧录与串口日志集中操作</p>
           </div>
-          <div className="header-actions">
-            <button type="button" className="icon-button" onClick={refreshPorts} title="刷新串口">
-              <RefreshCw size={18} />
-            </button>
-            <button type="button" className="command-button" onClick={saveConfig}>
-              <Save size={18} />
-              保存配置
-            </button>
+          <div className="header-cluster">
+            <div className={`run-indicator ${runStateClass}`} aria-label="当前任务状态">
+              <span />
+              <strong>{activeActionText}</strong>
+            </div>
+            <div className="header-actions">
+              <button type="button" className="icon-button" onClick={refreshPorts} title="刷新串口">
+                <RefreshCw size={18} />
+              </button>
+              <button type="button" className="command-button" onClick={saveConfig}>
+                <Save size={18} />
+                保存配置
+              </button>
+            </div>
           </div>
         </header>
 
         <section className="status-strip" aria-label="当前状态">
           <div className="status-cell">
             <Cpu size={18} />
-            <span>芯片</span>
+            <span>芯片型号</span>
             <strong>{config.chip}</strong>
           </div>
           <div className="status-cell">
             <Cable size={18} />
-            <span>串口</span>
+            <span>目标串口</span>
             <strong>{config.port || "AUTO"}</strong>
           </div>
           <div className="status-cell">
             <CircleDot size={18} />
-            <span>检测</span>
+            <span>串口检测</span>
             <strong>{portStateText}</strong>
           </div>
           <div className="status-cell">
             <CheckCircle2 size={18} />
-            <span>任务</span>
+            <span>任务状态</span>
             <strong>{statusText}</strong>
           </div>
         </section>
@@ -397,6 +423,7 @@ function App() {
           <section className="panel config-panel">
             <div className="panel-heading">
               <div>
+                <span className="panel-kicker">CONFIG</span>
                 <h2>连接与固件</h2>
                 <p>{configPath || "配置路径待加载"}</p>
               </div>
@@ -488,10 +515,58 @@ function App() {
           <section className="panel action-panel">
             <div className="panel-heading">
               <div>
-                <h2>执行</h2>
+                <span className="panel-kicker">RUN</span>
+                <h2>执行控制</h2>
                 <p>{toolDir || "后端路径待加载"}</p>
               </div>
               <Play size={20} />
+            </div>
+
+            <button
+              type="button"
+              className="launch-button"
+              onClick={() => runAction(primaryAction.action)}
+              disabled={isRunning}
+            >
+              <PrimaryIcon size={22} />
+              <span>
+                <strong>{activeAction === primaryAction.action ? "烧录中" : primaryAction.label}</strong>
+                <small>{config.skipBuildOnFlash ? "跳过编译，直接烧录固件" : "编译后烧录固件"}</small>
+              </span>
+            </button>
+
+            <div className="action-grid">
+              {secondaryActions.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    type="button"
+                    key={item.action}
+                    className={`action-button ${item.tone}`}
+                    onClick={() => runAction(item.action)}
+                    disabled={isRunning}
+                  >
+                    <Icon size={18} />
+                    {activeAction === item.action ? "执行中" : item.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="danger-row">
+              <button
+                type="button"
+                className="action-button danger"
+                onClick={() => runAction(eraseAction.action)}
+                disabled={isRunning}
+              >
+                <EraseIcon size={18} />
+                {activeAction === eraseAction.action ? "执行中" : eraseAction.label}
+              </button>
+              <button type="button" className="action-button stop" onClick={stopAction} disabled={!isRunning}>
+                <Square size={18} />
+                停止
+              </button>
             </div>
 
             <div className="toggle-grid">
@@ -529,28 +604,6 @@ function App() {
               </label>
             </div>
 
-            <div className="action-grid">
-              {actionItems.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    type="button"
-                    key={item.action}
-                    className={`action-button ${item.tone}`}
-                    onClick={() => runAction(item.action)}
-                    disabled={isRunning}
-                  >
-                    <Icon size={18} />
-                    {activeAction === item.action ? "执行中" : item.label}
-                  </button>
-                );
-              })}
-              <button type="button" className="action-button stop" onClick={stopAction} disabled={!isRunning}>
-                <Square size={18} />
-                停止
-              </button>
-            </div>
-
             <div className="quick-paths">
               <button type="button" onClick={() => void openQuickPath(userDataDir, "用户数据")} disabled={!userDataDir}>
                 <FolderOpen size={16} />
@@ -566,6 +619,7 @@ function App() {
           <section className="panel log-panel">
             <div className="terminal-toolbar">
               <div>
+                <span className="panel-kicker">OUTPUT</span>
                 <h2>日志</h2>
                 <p>{isRunning ? `正在${actionLabel(activeAction as EspAction)}` : statusText}</p>
               </div>
