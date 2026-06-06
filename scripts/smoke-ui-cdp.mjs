@@ -40,6 +40,7 @@ function commandForTarget() {
         "--use-angle=swiftshader",
         "--no-first-run",
         "--no-default-browser-check",
+        "--window-size=1360,900",
         `--remote-debugging-port=${port}`,
         `--user-data-dir=${userDataDir}`,
         pageUrl
@@ -411,10 +412,57 @@ async function main() {
   });
 
   const cleanup = async () => {
-    try {
-      child.kill();
-    } catch {
-      // Already exited.
+    if (child.pid && child.exitCode === null) {
+      try {
+        if (process.platform === "win32") {
+          await new Promise((resolve) => {
+            const killer = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+              stdio: "ignore",
+              windowsHide: true
+            });
+            killer.once("exit", resolve);
+            killer.once("error", resolve);
+          });
+        } else {
+          child.kill();
+        }
+      } catch {
+        // Already exited.
+      }
+
+      await new Promise((resolve) => {
+        if (child.exitCode !== null) {
+          resolve();
+          return;
+        }
+        child.once("exit", resolve);
+        setTimeout(resolve, 1200);
+      });
+    }
+
+    if (process.platform === "win32") {
+      const escapedUserDataDir = userDataDir.replace(/'/g, "''");
+      const escapedPort = String(port).replace(/'/g, "''");
+      await new Promise((resolve) => {
+        const cleaner = spawn(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-Command",
+            [
+              "$processes = Get-CimInstance Win32_Process -Filter \"name = 'msedge.exe'\" |",
+              `Where-Object { $_.CommandLine -like '*${escapedUserDataDir}*' -or $_.CommandLine -like '*remote-debugging-port=${escapedPort}*' };`,
+              "$processes | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+            ].join(" ")
+          ],
+          {
+            stdio: "ignore",
+            windowsHide: true
+          }
+        );
+        cleaner.once("exit", resolve);
+        cleaner.once("error", resolve);
+      });
     }
 
     await new Promise((resolve) => {
@@ -434,6 +482,12 @@ async function main() {
     await client.open();
     await client.call("Runtime.enable");
     await client.call("Page.enable");
+    await client.call("Emulation.setDeviceMetricsOverride", {
+      width: 1360,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false
+    });
     await waitForApp(client);
 
     await client.eval(`
@@ -458,6 +512,26 @@ async function main() {
 
     const result = await client.eval(`
       (async () => {
+      async function waitFor(condition, timeoutMs = 3000) {
+        const startedAt = Date.now();
+        while (Date.now() - startedAt < timeoutMs) {
+          if (condition()) {
+            return true;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        return false;
+      }
+
+      function clickTool(match) {
+        const button = Array.from(document.querySelectorAll(".tool-nav-item")).find((item) => item.innerText.includes(match));
+        if (!button) {
+          return false;
+        }
+        button.click();
+        return true;
+      }
+
       async function clickButton(match) {
         const buttons = Array.from(document.querySelectorAll("button"));
         const button = buttons.find((item) => item.innerText.trim().includes(match) || item.title.includes(match));
@@ -482,9 +556,114 @@ async function main() {
         };
       }
 
+      clickTool("ESP 烧录");
+      await waitFor(() => Boolean(document.querySelector(".workspace-grid")));
+
       const clicks = [];
       for (const match of ["刷新串口", "保存配置", "环境检查", "停止", "清空日志", "复制日志", "用户数据", "后端目录"]) {
         clicks.push(await clickButton(match));
+      }
+
+      function setCheckbox(labelText, checked) {
+        const label = Array.from(document.querySelectorAll("label")).find((item) => item.textContent.includes(labelText));
+        const input = label?.querySelector("input[type='checkbox']");
+        if (!input) {
+          return false;
+        }
+        if (input.checked !== checked) {
+          input.click();
+        }
+        return true;
+      }
+
+      function pressTerminalKey(target, key) {
+        target.dispatchEvent(new KeyboardEvent("keydown", {
+          key,
+          bubbles: true,
+          cancelable: true
+        }));
+      }
+
+      const serialChecks = {
+        foundTool: clickTool("串口助手"),
+        loaded: false,
+        controlHasNoInternalScroll: false,
+        sendPanelBeforeTerminal: false,
+        sendPanelHiddenInTerminal: false,
+        draftBeforeEnter: "",
+        statusChangedAfterEnter: false,
+        counterChangedAfterEnter: false,
+        controlMetrics: null,
+        failures: []
+      };
+
+      if (serialChecks.foundTool) {
+        serialChecks.loaded = await waitFor(() => Boolean(document.querySelector(".serial-layout")));
+      }
+
+      if (serialChecks.loaded) {
+        setCheckbox("终端模式", false);
+        await waitFor(() => !document.querySelector(".serial-terminal-panel")?.classList.contains("terminal-mode"));
+
+        const control = document.querySelector(".serial-control-panel");
+        serialChecks.controlHasNoInternalScroll = Boolean(control && control.scrollHeight <= control.clientHeight + 1);
+        serialChecks.controlMetrics = control
+          ? {
+              scrollHeight: control.scrollHeight,
+              clientHeight: control.clientHeight,
+              childCount: control.children.length
+            }
+          : null;
+        serialChecks.sendPanelBeforeTerminal = Boolean(document.querySelector(".serial-send-panel"));
+
+        setCheckbox("终端模式", true);
+        if (${JSON.stringify(target)} === "preview") {
+          setCheckbox("自动打开串口", true);
+        }
+        await waitFor(() => document.querySelector(".serial-terminal-panel")?.classList.contains("terminal-mode"));
+
+        const terminal = document.querySelector(".serial-receive-output");
+        serialChecks.sendPanelHiddenInTerminal = !document.querySelector(".serial-send-panel");
+
+        if (terminal) {
+          terminal.focus();
+          for (const key of ["h", "e", "l", "x", "Backspace", "p"]) {
+            pressTerminalKey(terminal, key);
+          }
+          await waitFor(() => (document.querySelector(".serial-terminal-draft-line")?.textContent || "") === "help");
+          serialChecks.draftBeforeEnter = document.querySelector(".serial-terminal-draft-line")?.textContent || "";
+
+          const statusBefore = document.querySelector(".terminal-toolbar p")?.textContent || "";
+          const counterBefore = document.querySelector(".serial-counter-bar")?.textContent || "";
+          pressTerminalKey(terminal, "Enter");
+          await new Promise((resolve) => setTimeout(resolve, 900));
+          const statusAfter = document.querySelector(".terminal-toolbar p")?.textContent || "";
+          const counterAfter = document.querySelector(".serial-counter-bar")?.textContent || "";
+          serialChecks.statusChangedAfterEnter = statusAfter !== statusBefore;
+          serialChecks.counterChangedAfterEnter = counterAfter !== counterBefore;
+        }
+      }
+
+      if (!serialChecks.foundTool) {
+        serialChecks.failures.push("串口助手导航不存在");
+      }
+      if (!serialChecks.loaded) {
+        serialChecks.failures.push("串口助手页面未加载");
+      }
+      if (!serialChecks.controlHasNoInternalScroll) {
+        serialChecks.failures.push("串口设置栏在 1360x900 下出现内部滚动");
+      }
+      if (!serialChecks.sendPanelBeforeTerminal) {
+        serialChecks.failures.push("非终端模式下发送框未显示");
+      }
+      if (!serialChecks.sendPanelHiddenInTerminal) {
+        serialChecks.failures.push("终端模式下发送框未隐藏");
+      }
+      if (serialChecks.draftBeforeEnter !== "help") {
+        serialChecks.failures.push("终端窗口键盘输入未形成 help 草稿");
+      }
+      if (!serialChecks.statusChangedAfterEnter && !serialChecks.counterChangedAfterEnter) {
+        serialChecks.failures.push("终端 Enter 发送后没有状态或计数反馈");
       }
 
       return {
@@ -493,6 +672,7 @@ async function main() {
         buttonCount: document.querySelectorAll("button").length,
         buttons: [],
         clicks,
+        serialChecks,
         smokeErrors: window.__akiSmoke
       };
       })()
@@ -507,6 +687,18 @@ async function main() {
     result.cdpExceptions = cdpExceptions;
     result.stderr = stderr.trim();
 
+    const screenshotOutput = process.env.AKI_SMOKE_SCREENSHOT;
+    if (screenshotOutput) {
+      const screenshotPath = path.resolve(repoRoot, screenshotOutput);
+      fs.mkdirSync(path.dirname(screenshotPath), { recursive: true });
+      const screenshot = await client.call("Page.captureScreenshot", {
+        format: "png",
+        fromSurface: true
+      });
+      fs.writeFileSync(screenshotPath, Buffer.from(screenshot.data, "base64"));
+      result.screenshot = screenshotPath;
+    }
+
     client.close();
     await cleanup();
 
@@ -515,6 +707,7 @@ async function main() {
     const failedClicks = result.clicks.filter((item) => !item.found || (!item.disabled && item.statusBefore === item.statusAfter && !item.logChanged));
     const failures = [
       ...failedClicks.map((item) => `按钮无可见反馈: ${item.match}`),
+      ...(result.serialChecks?.failures || []),
       ...result.smokeErrors.errors,
       ...result.smokeErrors.rejections,
       ...result.cdpExceptions

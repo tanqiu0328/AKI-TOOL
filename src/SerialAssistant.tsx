@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { ClipboardEvent, KeyboardEvent } from "react";
 import {
   Clock3,
   Copy,
@@ -141,10 +141,6 @@ function uniquePortOptions(configPort: string, ports: SerialPortInfo[]) {
   return Array.from(new Set(values));
 }
 
-function portMeta(port: SerialPortInfo) {
-  return [port.manufacturer, port.serialNumber, port.pnpId].filter(Boolean).join(" / ");
-}
-
 function signalText(value: boolean | null) {
   if (value === null) {
     return "?";
@@ -165,20 +161,22 @@ function downloadTextFile(text: string) {
 function ModeToggle({
   label,
   mode,
-  setMode
+  setMode,
+  disabled = false
 }: {
   label: string;
   mode: SerialDisplayMode;
   setMode: (mode: SerialDisplayMode) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="segmented-field" aria-label={label}>
       <span>{label}</span>
       <div className="segmented-control">
-        <button type="button" className={mode === "text" ? "active" : ""} onClick={() => setMode("text")}>
+        <button type="button" className={mode === "text" ? "active" : ""} onClick={() => setMode("text")} disabled={disabled}>
           Text
         </button>
-        <button type="button" className={mode === "hex" ? "active" : ""} onClick={() => setMode("hex")}>
+        <button type="button" className={mode === "hex" ? "active" : ""} onClick={() => setMode("hex")} disabled={disabled}>
           HEX
         </button>
       </div>
@@ -187,7 +185,7 @@ function ModeToggle({
 }
 
 export function SerialAssistant({ api, isDesktop }: SerialAssistantProps) {
-  const terminalRef = useRef<HTMLPreElement>(null);
+  const terminalRef = useRef<HTMLDivElement>(null);
   const configRef = useRef(initialSerialConfig);
   const receiveTextRef = useRef("");
   const lastFrameAtRef = useRef<number | null>(null);
@@ -200,16 +198,12 @@ export function SerialAssistant({ api, isDesktop }: SerialAssistantProps) {
   const [statusText, setStatusText] = useState("就绪");
   const [receiveText, setReceiveText] = useState("");
   const [sendText, setSendText] = useState("help");
+  const [terminalDraft, setTerminalDraft] = useState("");
   const [rxBytes, setRxBytes] = useState(0);
   const [txBytes, setTxBytes] = useState(0);
   const [signals, setSignals] = useState<SerialLineSignals>(emptySignals);
 
   const portOptions = useMemo(() => uniquePortOptions(config.port, ports), [config.port, ports]);
-  const activePortMeta = useMemo(
-    () => ports.find((port) => port.path.toUpperCase() === config.port.toUpperCase()),
-    [config.port, ports]
-  );
-
   useEffect(() => {
     configRef.current = config;
   }, [config]);
@@ -220,6 +214,14 @@ export function SerialAssistant({ api, isDesktop }: SerialAssistantProps) {
 
   const setField = useCallback<SetSerialField>((key, value) => {
     setConfig((current) => ({ ...current, [key]: value }));
+  }, []);
+
+  const setTerminalMode = useCallback((enabled: boolean) => {
+    setConfig((current) => ({
+      ...current,
+      terminalMode: enabled,
+      sendMode: enabled ? "text" : current.sendMode
+    }));
   }, []);
 
   const appendSerialEvent = useCallback((event: SerialDataEvent) => {
@@ -306,20 +308,28 @@ export function SerialAssistant({ api, isDesktop }: SerialAssistantProps) {
     }
   }, [api]);
 
-  const sendData = useCallback(
-    async (appendLineEnding = false) => {
+  const sendSerialPayload = useCallback(
+    async ({
+      value,
+      appendLineEnding = false,
+      mode
+    }: {
+      value: string;
+      appendLineEnding?: boolean;
+      mode?: SerialDisplayMode;
+    }) => {
       const currentConfig = configRef.current;
-      const value = sendText;
+      const sendMode = mode ?? currentConfig.sendMode;
 
-      if (currentConfig.sendMode === "hex") {
+      if (sendMode === "hex") {
         const error = validateHexInput(value);
         if (error) {
           setStatusText(error);
-          return;
+          return false;
         }
       } else if (!value && !appendLineEnding) {
         setStatusText("发送内容为空");
-        return;
+        return false;
       }
 
       try {
@@ -329,16 +339,23 @@ export function SerialAssistant({ api, isDesktop }: SerialAssistantProps) {
 
         await api.serial.write({
           data: value,
-          mode: currentConfig.sendMode,
+          mode: sendMode,
           encoding: currentConfig.textEncoding,
           appendLineEnding
         });
         setStatusText("发送完成");
+        return true;
       } catch (error) {
         setStatusText(`发送失败: ${getErrorMessage(error)}`);
+        return false;
       }
     },
-    [api, connected, openSerial, sendText]
+    [api, connected, openSerial]
+  );
+
+  const sendData = useCallback(
+    (appendLineEnding = false) => sendSerialPayload({ value: sendText, appendLineEnding }),
+    [sendSerialPayload, sendText]
   );
 
   const setControlLine = useCallback(
@@ -405,10 +422,16 @@ export function SerialAssistant({ api, isDesktop }: SerialAssistantProps) {
   }, [config.timedSend, config.timedSendIntervalMs, sendData]);
 
   useEffect(() => {
+    if (config.terminalMode && config.sendMode !== "text") {
+      setField("sendMode", "text");
+    }
+  }, [config.sendMode, config.terminalMode, setField]);
+
+  useEffect(() => {
     if (terminalRef.current) {
       terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
     }
-  }, [receiveText]);
+  }, [config.terminalMode, receiveText, terminalDraft]);
 
   function clearReceive() {
     setReceiveText("");
@@ -446,13 +469,53 @@ export function SerialAssistant({ api, isDesktop }: SerialAssistantProps) {
     setStatusText(isDesktop ? "已保存到下载任务" : "已导出接收数据");
   }
 
-  function handleSendKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (!config.terminalMode || event.key !== "Enter" || event.shiftKey) {
+  async function sendTerminalLine() {
+    const sent = await sendSerialPayload({
+      value: terminalDraft,
+      mode: "text",
+      appendLineEnding: true
+    });
+
+    if (sent) {
+      setTerminalDraft("");
+    }
+  }
+
+  function handleTerminalKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (!config.terminalMode) {
+      return;
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void sendTerminalLine();
+      return;
+    }
+
+    if (event.key === "Backspace") {
+      event.preventDefault();
+      setTerminalDraft((current) => current.slice(0, -1));
+      return;
+    }
+
+    if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      setTerminalDraft((current) => `${current}${event.key}`);
+    }
+  }
+
+  function handleTerminalPaste(event: ClipboardEvent<HTMLDivElement>) {
+    if (!config.terminalMode) {
+      return;
+    }
+
+    const text = event.clipboardData.getData("text");
+    if (!text) {
       return;
     }
 
     event.preventDefault();
-    void sendData(true);
+    setTerminalDraft((current) => `${current}${text.replace(/[\r\n]+/g, "")}`);
   }
 
   const stateClass = connected ? "ok" : statusText.includes("失败") || statusText.includes("错误") ? "error" : "idle";
@@ -558,8 +621,6 @@ export function SerialAssistant({ api, isDesktop }: SerialAssistantProps) {
             </label>
           </div>
 
-          {activePortMeta ? <p className="serial-port-meta">{portMeta(activePortMeta)}</p> : null}
-
           <div className="serial-open-row">
             <button type="button" className="action-button" onClick={() => void refreshPorts()}>
               <RefreshCw size={17} />
@@ -617,44 +678,36 @@ export function SerialAssistant({ api, isDesktop }: SerialAssistantProps) {
             </div>
           </label>
 
-          <div className="serial-secondary-actions">
-            <button type="button" onClick={copyReceive}>
-              <Copy size={16} />
-              复制
-            </button>
-            <button type="button" onClick={saveReceive}>
-              <FileDown size={16} />
-              保存
-            </button>
-            <button type="button" onClick={clearReceive}>
-              <Trash2 size={16} />
-              清空
-            </button>
-          </div>
-
           <div className="serial-section-heading">
             <Send size={18} />
             <h2>发送</h2>
           </div>
 
-          <ModeToggle label="格式" mode={config.sendMode} setMode={(mode) => setField("sendMode", mode)} />
+          <ModeToggle
+            label="格式"
+            mode={config.sendMode}
+            setMode={(mode) => setField("sendMode", config.terminalMode ? "text" : mode)}
+            disabled={config.terminalMode}
+          />
 
-          <label className="switch-row">
-            <input type="checkbox" checked={config.terminalMode} onChange={(event) => setField("terminalMode", event.target.checked)} />
-            <span>终端模式</span>
-          </label>
-          <label className="switch-row">
-            <input type="checkbox" checked={config.showSent} onChange={(event) => setField("showSent", event.target.checked)} />
-            <span>显示发送内容</span>
-          </label>
-          <label className="switch-row">
-            <input type="checkbox" checked={config.autoOpen} onChange={(event) => setField("autoOpen", event.target.checked)} />
-            <span>自动打开串口</span>
-          </label>
-          <label className="switch-row">
-            <input type="checkbox" checked={config.autoReconnect} onChange={(event) => setField("autoReconnect", event.target.checked)} />
-            <span>自动重连</span>
-          </label>
+          <div className="serial-switch-grid">
+            <label className="switch-row">
+              <input type="checkbox" checked={config.terminalMode} onChange={(event) => setTerminalMode(event.target.checked)} />
+              <span>终端模式</span>
+            </label>
+            <label className="switch-row">
+              <input type="checkbox" checked={config.showSent} onChange={(event) => setField("showSent", event.target.checked)} />
+              <span>显示发送内容</span>
+            </label>
+            <label className="switch-row">
+              <input type="checkbox" checked={config.autoOpen} onChange={(event) => setField("autoOpen", event.target.checked)} />
+              <span>自动打开串口</span>
+            </label>
+            <label className="switch-row">
+              <input type="checkbox" checked={config.autoReconnect} onChange={(event) => setField("autoReconnect", event.target.checked)} />
+              <span>自动重连</span>
+            </label>
+          </div>
 
           <label className="field inline-field">
             <span>定时发送</span>
@@ -676,16 +729,19 @@ export function SerialAssistant({ api, isDesktop }: SerialAssistantProps) {
           </label>
         </section>
 
-        <section className="panel serial-terminal-panel">
+        <section className={`panel serial-terminal-panel ${config.terminalMode ? "terminal-mode" : ""}`}>
           <div className="terminal-toolbar">
             <div>
-              <span className="panel-kicker">RECEIVE</span>
-              <h2>接收窗口</h2>
+              <span className="panel-kicker">{config.terminalMode ? "TERMINAL" : "RECEIVE"}</span>
+              <h2>{config.terminalMode ? "终端窗口" : "接收窗口"}</h2>
               <p>{statusText}</p>
             </div>
             <div className="terminal-actions">
               <button type="button" className="icon-button" onClick={copyReceive} title="复制接收数据">
                 <Copy size={18} />
+              </button>
+              <button type="button" className="icon-button" onClick={saveReceive} title="保存接收数据">
+                <FileDown size={18} />
               </button>
               <button type="button" className="icon-button" onClick={clearReceive} title="清空接收数据">
                 <Trash2 size={18} />
@@ -693,22 +749,39 @@ export function SerialAssistant({ api, isDesktop }: SerialAssistantProps) {
             </div>
           </div>
 
-          <pre ref={terminalRef} className="serial-receive-output">
-            {receiveText}
-          </pre>
-
-          <div className="serial-send-panel">
-            <textarea
-              value={sendText}
-              onChange={(event) => setSendText(event.target.value)}
-              onKeyDown={handleSendKeyDown}
-              spellCheck={false}
-              aria-label="发送内容"
-            />
-            <button type="button" className="serial-send-button" onClick={() => void sendData(false)} disabled={!connected && !config.autoOpen}>
-              <Send size={34} />
-            </button>
+          <div
+            ref={terminalRef}
+            className="serial-receive-output"
+            tabIndex={config.terminalMode ? 0 : -1}
+            role={config.terminalMode ? "textbox" : undefined}
+            aria-label={config.terminalMode ? "终端输入窗口" : "接收数据"}
+            aria-multiline={config.terminalMode ? true : undefined}
+            onClick={() => terminalRef.current?.focus()}
+            onKeyDown={handleTerminalKeyDown}
+            onPaste={handleTerminalPaste}
+          >
+            <pre className="serial-receive-text">{receiveText}</pre>
+            {config.terminalMode ? (
+              <div className="serial-terminal-draft-line">
+                <span>{terminalDraft}</span>
+                <span className="serial-terminal-caret" aria-hidden="true" />
+              </div>
+            ) : null}
           </div>
+
+          {config.terminalMode ? null : (
+            <div className="serial-send-panel">
+              <textarea
+                value={sendText}
+                onChange={(event) => setSendText(event.target.value)}
+                spellCheck={false}
+                aria-label="发送内容"
+              />
+              <button type="button" className="serial-send-button" onClick={() => void sendData(false)} disabled={!connected && !config.autoOpen}>
+                <Send size={34} />
+              </button>
+            </div>
+          )}
 
           <footer className="serial-counter-bar">
             <span>发送: {txBytes}</span>
