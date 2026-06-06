@@ -1,4 +1,14 @@
-import type { ActionFinishedEvent, ActionOutputEvent, AkiApi, EspAction, EspConfig } from "./types";
+import type {
+  ActionFinishedEvent,
+  ActionOutputEvent,
+  AkiApi,
+  EspAction,
+  EspConfig,
+  SerialConfig,
+  SerialDataEvent,
+  SerialLineSignals,
+  SerialStatusEvent
+} from "./types";
 
 const fallbackConfig: EspConfig = {
   chip: "esp32",
@@ -15,11 +25,43 @@ const fallbackConfig: EspConfig = {
   logDir: "logs"
 };
 
+const fallbackSerialConfig: SerialConfig = {
+  port: "COM3",
+  baudRate: 115200,
+  dataBits: 8,
+  parity: "none",
+  stopBits: 1,
+  textEncoding: "utf-8",
+  receiveMode: "text",
+  sendMode: "text",
+  showTimestamp: true,
+  frameGapMs: 20,
+  terminalMode: false,
+  showSent: true,
+  timedSend: false,
+  timedSendIntervalMs: 1000,
+  autoOpen: false,
+  autoReconnect: true,
+  dtr: false,
+  rts: false
+};
+
 const outputListeners = new Set<(event: ActionOutputEvent) => void>();
 const finishedListeners = new Set<(event: ActionFinishedEvent) => void>();
+const serialDataListeners = new Set<(event: SerialDataEvent) => void>();
+const serialStatusListeners = new Set<(event: SerialStatusEvent) => void>();
 
 let fallbackConfigState = { ...fallbackConfig };
+let fallbackSerialConfigState = { ...fallbackSerialConfig };
 let fallbackRunningId = "";
+let fallbackSerialOpen = false;
+let fallbackSerialSignals: SerialLineSignals = {
+  dtr: false,
+  rts: false,
+  cts: null,
+  dsr: null,
+  dcd: null
+};
 
 function emitOutput(event: ActionOutputEvent) {
   outputListeners.forEach((listener) => listener(event));
@@ -27,6 +69,33 @@ function emitOutput(event: ActionOutputEvent) {
 
 function emitFinished(event: ActionFinishedEvent) {
   finishedListeners.forEach((listener) => listener(event));
+}
+
+function emitSerialData(event: SerialDataEvent) {
+  serialDataListeners.forEach((listener) => listener(event));
+}
+
+function emitSerialStatus(event: SerialStatusEvent) {
+  serialStatusListeners.forEach((listener) => listener(event));
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+}
+
+function fallbackSerialStatus(status: SerialStatusEvent["status"], message: string): SerialStatusEvent {
+  return {
+    status,
+    connected: fallbackSerialOpen,
+    message,
+    port: fallbackSerialConfigState.port,
+    signals: fallbackSerialSignals,
+    timestamp: Date.now()
+  };
 }
 
 function getActionLabel(action: EspAction) {
@@ -110,6 +179,96 @@ function createFallbackApi(): AkiApi {
       onActionFinished: (callback) => {
         finishedListeners.add(callback);
         return () => finishedListeners.delete(callback);
+      }
+    },
+    serial: {
+      getConfig: async () => ({
+        config: fallbackSerialConfigState,
+        configPath: "浏览器预览模式"
+      }),
+      saveConfig: async (config) => {
+        fallbackSerialConfigState = { ...config };
+        fallbackSerialSignals = {
+          ...fallbackSerialSignals,
+          dtr: config.dtr,
+          rts: config.rts
+        };
+        return { config: fallbackSerialConfigState, configPath: "浏览器预览模式" };
+      },
+      listPorts: async () => [
+        { path: "COM3", manufacturer: "AKI mock device" },
+        { path: "COM6", manufacturer: "USB-SERIAL CH340" }
+      ],
+      open: async (config) => {
+        fallbackSerialConfigState = { ...config, port: config.port === "AUTO" ? "COM3" : config.port };
+        fallbackSerialSignals = {
+          ...fallbackSerialSignals,
+          dtr: config.dtr,
+          rts: config.rts
+        };
+        fallbackSerialOpen = true;
+        const status = fallbackSerialStatus("open", `已打开 ${fallbackSerialConfigState.port}`);
+        window.setTimeout(() => emitSerialStatus(status), 0);
+        window.setTimeout(() => {
+          if (fallbackSerialOpen) {
+            const text = "AKI-TOOL mock serial ready\r\n";
+            emitSerialData({
+              direction: "rx",
+              base64: bytesToBase64(new TextEncoder().encode(text)),
+              byteLength: text.length,
+              timestamp: Date.now()
+            });
+          }
+        }, 260);
+        return status;
+      },
+      close: async () => {
+        fallbackSerialOpen = false;
+        const status = fallbackSerialStatus("closed", "串口已关闭");
+        window.setTimeout(() => emitSerialStatus(status), 0);
+        return status;
+      },
+      write: async (payload) => {
+        if (!fallbackSerialOpen) {
+          throw new Error("串口未打开。");
+        }
+
+        const data = payload.mode === "text" ? payload.data + (payload.appendLineEnding ? "\r\n" : "") : payload.data;
+        const bytes = new TextEncoder().encode(data);
+        const event: SerialDataEvent = {
+          direction: "tx",
+          base64: bytesToBase64(bytes),
+          byteLength: bytes.length,
+          timestamp: Date.now()
+        };
+        window.setTimeout(() => emitSerialData(event), 0);
+        window.setTimeout(() => {
+          if (fallbackSerialOpen) {
+            emitSerialData({
+              ...event,
+              direction: "rx",
+              timestamp: Date.now()
+            });
+          }
+        }, 120);
+        return { bytesWritten: bytes.length };
+      },
+      setControlLines: async (signals) => {
+        fallbackSerialSignals = {
+          ...fallbackSerialSignals,
+          dtr: signals.dtr,
+          rts: signals.rts
+        };
+        emitSerialStatus(fallbackSerialStatus(fallbackSerialOpen ? "open" : "closed", "控制线已更新"));
+        return fallbackSerialSignals;
+      },
+      onData: (callback) => {
+        serialDataListeners.add(callback);
+        return () => serialDataListeners.delete(callback);
+      },
+      onStatus: (callback) => {
+        serialStatusListeners.add(callback);
+        return () => serialStatusListeners.delete(callback);
       }
     },
     dialog: {

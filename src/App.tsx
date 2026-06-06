@@ -23,7 +23,8 @@ import {
   Wrench
 } from "lucide-react";
 import { getAkiApi } from "./bridge";
-import type { ActionFinishedEvent, ActionOutputEvent, EspAction, EspConfig } from "./types";
+import { SerialAssistant } from "./SerialAssistant";
+import type { ActionFinishedEvent, ActionOutputEvent, EspAction, EspConfig, ToolId } from "./types";
 
 const initialConfig: EspConfig = {
   chip: "esp32",
@@ -44,10 +45,10 @@ const chipOptions = ["esp32", "esp32s2", "esp32s3", "esp32c3", "esp32c6", "esp32
 const baudOptions = [115200, 230400, 460800, 921600, 1500000];
 
 const toolItems = [
-  { id: "esp", name: "ESP 烧录", meta: "flash / monitor", icon: Cpu, active: true },
-  { id: "serial", name: "串口日志", meta: "未开放", icon: Terminal, active: false },
-  { id: "package", name: "固件包", meta: "未开放", icon: HardDriveDownload, active: false },
-  { id: "settings", name: "全局设置", meta: "未开放", icon: Settings2, active: false }
+  { id: "esp", name: "ESP 烧录", meta: "flash / monitor", icon: Cpu, enabled: true },
+  { id: "serial", name: "串口助手", meta: "serial debug", icon: Terminal, enabled: true },
+  { id: "package", name: "固件包", meta: "未开放", icon: HardDriveDownload, enabled: false },
+  { id: "settings", name: "全局设置", meta: "未开放", icon: Settings2, enabled: false }
 ];
 
 const actionItems: Array<{
@@ -79,14 +80,20 @@ function getErrorMessage(error: unknown) {
 }
 
 function Sidebar({
+  activeTool,
+  onSelectTool,
   portStateText,
   runStateClass,
   statusText
 }: {
+  activeTool: ToolId;
+  onSelectTool: (tool: ToolId) => void;
   portStateText: string;
   runStateClass: RunStateClass;
   statusText: string;
 }) {
+  const activeToolName = activeTool === "serial" ? "串口助手" : "ESP 烧录";
+
   return (
     <aside className="sidebar">
       <div className="brand-block">
@@ -100,13 +107,15 @@ function Sidebar({
       <nav className="tool-nav" aria-label="工具导航">
         {toolItems.map((item) => {
           const Icon = item.icon;
+          const isActive = item.id === activeTool;
           return (
             <button
               type="button"
               key={item.id}
-              className={`tool-nav-item ${item.active ? "active" : ""}`}
-              disabled={!item.active}
-              title={item.active ? item.name : `${item.name}暂未开放`}
+              className={`tool-nav-item ${isActive ? "active" : ""}`}
+              disabled={!item.enabled}
+              onClick={() => item.enabled && onSelectTool(item.id as ToolId)}
+              title={item.enabled ? item.name : `${item.name}暂未开放`}
             >
               <Icon size={19} />
               <span>
@@ -121,7 +130,7 @@ function Sidebar({
       <div className="sidebar-summary" aria-label="工具概览">
         <div>
           <span>当前工具</span>
-          <strong>ESP 烧录</strong>
+          <strong>{activeToolName}</strong>
         </div>
         <div>
           <span>串口检测</span>
@@ -506,6 +515,7 @@ function App() {
   const [activeAction, setActiveAction] = useState<EspAction | "">("");
   const [statusText, setStatusText] = useState("就绪");
   const [lastExitCode, setLastExitCode] = useState<number | null>(null);
+  const [activeTool, setActiveTool] = useState<ToolId>("esp");
 
   const portOptions = useMemo(() => uniqueValues(["AUTO", config.port, ...ports]), [config.port, ports]);
 
@@ -742,51 +752,61 @@ function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar portStateText={portStateText} runStateClass={runStateClass} statusText={statusText} />
+      <Sidebar
+        activeTool={activeTool}
+        onSelectTool={setActiveTool}
+        portStateText={portStateText}
+        runStateClass={runStateClass}
+        statusText={statusText}
+      />
 
-      <main className="workspace">
-        <WorkspaceHeader
-          activeActionText={activeActionText}
-          onRefreshPorts={refreshPorts}
-          onSaveConfig={saveConfig}
-          runStateClass={runStateClass}
-        />
-
-        <StatusCards config={config} portStateText={portStateText} statusText={statusText} />
-
-        <div className="workspace-grid">
-          <ConfigPanel
-            config={config}
-            configPath={configPath}
-            onChooseDirectory={(key) => void chooseDirectory(key)}
-            onChooseIdfExport={() => void chooseIdfExport()}
-            portOptions={portOptions}
-            setField={setField}
+      {activeTool === "serial" ? (
+        <SerialAssistant api={api} isDesktop={isDesktop} />
+      ) : (
+        <main className="workspace">
+          <WorkspaceHeader
+            activeActionText={activeActionText}
+            onRefreshPorts={refreshPorts}
+            onSaveConfig={saveConfig}
+            runStateClass={runStateClass}
           />
 
-          <ActionPanel
-            activeAction={activeAction}
-            config={config}
-            isRunning={isRunning}
-            onOpenQuickPath={(targetPath, label) => void openQuickPath(targetPath, label)}
-            onRunAction={(action) => void runAction(action)}
-            onStopAction={() => void stopAction()}
-            setField={setField}
-            toolDir={toolDir}
-            userDataDir={userDataDir}
-          />
+          <StatusCards config={config} portStateText={portStateText} statusText={statusText} />
 
-          <LogPanel
-            activeAction={activeAction}
-            isRunning={isRunning}
-            logText={logText}
-            onClearLog={clearLog}
-            onCopyLog={() => void copyLog()}
-            statusText={statusText}
-            terminalRef={terminalRef}
-          />
-        </div>
-      </main>
+          <div className="workspace-grid">
+            <ConfigPanel
+              config={config}
+              configPath={configPath}
+              onChooseDirectory={(key) => void chooseDirectory(key)}
+              onChooseIdfExport={() => void chooseIdfExport()}
+              portOptions={portOptions}
+              setField={setField}
+            />
+
+            <ActionPanel
+              activeAction={activeAction}
+              config={config}
+              isRunning={isRunning}
+              onOpenQuickPath={(targetPath, label) => void openQuickPath(targetPath, label)}
+              onRunAction={(action) => void runAction(action)}
+              onStopAction={() => void stopAction()}
+              setField={setField}
+              toolDir={toolDir}
+              userDataDir={userDataDir}
+            />
+
+            <LogPanel
+              activeAction={activeAction}
+              isRunning={isRunning}
+              logText={logText}
+              onClearLog={clearLog}
+              onCopyLog={() => void copyLog()}
+              statusText={statusText}
+              terminalRef={terminalRef}
+            />
+          </div>
+        </main>
+      )}
     </div>
   );
 }
