@@ -6,22 +6,22 @@
     <title>AKI-TOOL UI Redesign Preview</title>
     <style>
       :root {
-        --page: #edf3f8;
-        --page-soft: #f7fafc;
-        --surface: rgba(255, 255, 255, 0.82);
+        --page: #f1f4f7;
+        --page-soft: #f8fafc;
+        --surface: rgba(255, 255, 255, 0.9);
         --surface-solid: #ffffff;
         --surface-muted: #f4f7fb;
-        --line: rgba(205, 215, 228, 0.82);
-        --line-soft: rgba(226, 232, 240, 0.9);
+        --line: rgba(204, 214, 226, 0.86);
+        --line-soft: rgba(226, 232, 240, 0.94);
         --text: #172033;
         --text-soft: #3d4a60;
         --muted: #7b8798;
         --faint: #a4b0c2;
-        --blue: #2563eb;
-        --blue-dark: #1d4ed8;
-        --blue-soft: #e9f0ff;
-        --cyan: #16b6c8;
-        --cyan-soft: #e7fbfe;
+        --blue: #2f67c7;
+        --blue-dark: #234f9d;
+        --blue-soft: #eef4ff;
+        --cyan: #2497a7;
+        --cyan-soft: #edf9fb;
         --green: #16a878;
         --green-soft: #e9fbf4;
         --amber: #e59a24;
@@ -31,8 +31,8 @@
         --violet: #6c5ce7;
         --terminal: #101826;
         --terminal-soft: #172235;
-        --shadow: 0 18px 42px rgba(31, 45, 71, 0.12);
-        --shadow-soft: 0 10px 26px rgba(31, 45, 71, 0.08);
+        --shadow: 0 14px 32px rgba(31, 45, 71, 0.08);
+        --shadow-soft: 0 8px 18px rgba(31, 45, 71, 0.05);
       }
 
       * {
@@ -50,7 +50,7 @@
       body {
         color: var(--text);
         background:
-          linear-gradient(135deg, #e9f0fa 0%, #f7fbff 42%, #eef8f3 100%),
+          linear-gradient(135deg, #eef3f7 0%, #f8fafc 44%, #f1f6f3 100%),
           var(--page);
         font-family:
           Inter, "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
@@ -92,7 +92,7 @@
         height: 100vh;
         min-width: 1180px;
         overflow: hidden;
-        background: rgba(244, 248, 252, 0.9);
+        background: rgba(243, 246, 249, 0.96);
       }
 
       .titlebar {
@@ -120,7 +120,7 @@
         height: 16px;
         place-items: center;
         color: #ffffff;
-        background: linear-gradient(135deg, var(--blue), var(--cyan));
+        background: var(--blue);
         border-radius: 5px;
         font-size: 9px;
         font-weight: 900;
@@ -183,8 +183,8 @@
 
       .rail-button.active {
         color: #ffffff;
-        background: linear-gradient(135deg, var(--blue), var(--cyan));
-        box-shadow: 0 12px 24px rgba(37, 99, 235, 0.24);
+        background: var(--blue);
+        box-shadow: 0 10px 20px rgba(47, 103, 199, 0.18);
       }
 
       .rail-button.subtle {
@@ -282,9 +282,9 @@
 
       .primary-button {
         color: #ffffff;
-        background: linear-gradient(135deg, var(--blue), #1ea7c6);
+        background: var(--blue);
         border-color: rgba(255, 255, 255, 0.52);
-        box-shadow: 0 12px 26px rgba(37, 99, 235, 0.24);
+        box-shadow: 0 10px 22px rgba(47, 103, 199, 0.18);
       }
 
       .danger-button {
@@ -563,19 +563,19 @@
         gap: 12px;
         min-height: 70px;
         padding: 12px;
-        color: #ffffff;
+        color: var(--text);
         text-align: left;
-        background: linear-gradient(135deg, #215be8 0%, #18a8c0 100%);
-        border: 1px solid rgba(255, 255, 255, 0.54);
+        background: #f8fbff;
+        border: 1px solid #c8d9f4;
         border-radius: 8px;
-        box-shadow: 0 14px 30px rgba(37, 99, 235, 0.24);
+        box-shadow: 0 10px 20px rgba(31, 45, 71, 0.06);
       }
 
       .flash-button .mini-icon {
         width: 42px;
         height: 42px;
-        color: #1d4ed8;
-        background: rgba(255, 255, 255, 0.9);
+        color: var(--blue);
+        background: var(--blue-soft);
       }
 
       .flash-copy {
@@ -591,13 +591,14 @@
       }
 
       .flash-copy strong {
+        color: #0f172a;
         font-size: 17px;
         font-weight: 900;
       }
 
       .flash-copy span {
         margin-top: 3px;
-        color: rgba(255, 255, 255, 0.82);
+        color: var(--muted);
         font-size: 12px;
         font-weight: 800;
       }
@@ -648,7 +649,7 @@
       }
 
       .switch.on {
-        background: linear-gradient(135deg, var(--blue), var(--cyan));
+        background: var(--blue);
       }
 
       .switch.on::after {
@@ -778,7 +779,7 @@
         width: 54px;
         height: 66px;
         color: #ffffff;
-        background: linear-gradient(135deg, var(--blue), var(--cyan));
+        background: var(--blue);
       }
 
       .counter-row {

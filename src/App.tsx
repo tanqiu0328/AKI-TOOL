@@ -3,10 +3,10 @@ import type { RefObject } from "react";
 import {
   Cable,
   CheckCircle2,
-  CircleDot,
   Copy,
   Cpu,
   Eraser,
+  FileText,
   Flame,
   FolderOpen,
   Hammer,
@@ -19,8 +19,7 @@ import {
   Settings2,
   Square,
   Terminal,
-  Trash2,
-  Wrench
+  Trash2
 } from "lucide-react";
 import { getAkiApi } from "./bridge";
 import { SerialAssistant } from "./SerialAssistant";
@@ -79,6 +78,20 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function compactPath(path: string) {
+  if (!path) {
+    return "待加载";
+  }
+
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  return parts.at(-1) ?? path;
+}
+
+function countLogLines(logText: string) {
+  const trimmed = logText.trim();
+  return trimmed ? String(trimmed.split(/\r?\n/).length) : "0";
+}
+
 function Sidebar({
   activeTool,
   onSelectTool,
@@ -92,17 +105,9 @@ function Sidebar({
   runStateClass: RunStateClass;
   statusText: string;
 }) {
-  const activeToolName = activeTool === "serial" ? "串口助手" : "ESP 烧录";
-
   return (
     <aside className="sidebar">
-      <div className="brand-block">
-        <div className="brand-mark">AK</div>
-        <div className="brand-copy">
-          <div className="brand-name">AKI-TOOL</div>
-          <div className="brand-subtitle">ESP utility console</div>
-        </div>
-      </div>
+      <div className="brand-mark" title="AKI-TOOL">AK</div>
 
       <nav className="tool-nav" aria-label="工具导航">
         {toolItems.map((item) => {
@@ -118,29 +123,15 @@ function Sidebar({
               title={item.enabled ? item.name : `${item.name}暂未开放`}
             >
               <Icon size={19} />
-              <span>
-                <strong>{item.name}</strong>
-                <small>{item.meta}</small>
-              </span>
+              <span className="sr-only">{item.name}</span>
             </button>
           );
         })}
       </nav>
 
-      <div className="sidebar-summary" aria-label="工具概览">
-        <div>
-          <span>当前工具</span>
-          <strong>{activeToolName}</strong>
-        </div>
-        <div>
-          <span>串口检测</span>
-          <strong>{portStateText}</strong>
-        </div>
-      </div>
-
-      <div className="sidebar-footer">
+      <div className="sidebar-footer" title={`${statusText} · ${portStateText}`}>
         <div className={`state-dot ${runStateClass}`} />
-        <span>{statusText}</span>
+        <span className="sr-only">{statusText}</span>
       </div>
     </aside>
   );
@@ -160,9 +151,8 @@ function WorkspaceHeader({
   return (
     <header className="workspace-header">
       <div className="title-block">
-        <div className="eyebrow">ESP FLASHER</div>
-        <h1>ESP 烧录工作台</h1>
-        <p>配置、编译、烧录与串口日志集中操作</p>
+        <h1>仪表盘</h1>
+        <p>ESP 烧录、串口调试与运行日志</p>
       </div>
       <div className="header-cluster">
         <div className={`run-indicator ${runStateClass}`} aria-label="当前任务状态">
@@ -183,18 +173,23 @@ function WorkspaceHeader({
 
 function StatusCards({
   config,
+  configPath,
+  logText,
   portStateText,
   statusText
 }: {
   config: EspConfig;
+  configPath: string;
+  logText: string;
   portStateText: string;
   statusText: string;
 }) {
   const cards = [
-    { label: "芯片型号", value: config.chip, icon: Cpu },
-    { label: "目标串口", value: config.port || "AUTO", icon: Cable },
-    { label: "串口检测", value: portStateText, icon: CircleDot },
-    { label: "任务状态", value: statusText, icon: CheckCircle2 }
+    { label: "串口状态", value: config.port || "AUTO", hint: portStateText, icon: Cable, tone: "" },
+    { label: "当前芯片", value: config.chip, icon: Cpu, tone: "cyan" },
+    { label: "任务状态", value: statusText, icon: CheckCircle2, tone: "green" },
+    { label: "配置路径", value: compactPath(configPath), icon: FolderOpen, tone: "amber" },
+    { label: "日志计数", value: countLogLines(logText), hint: "行", icon: FileText, tone: "violet" }
   ];
 
   return (
@@ -203,9 +198,10 @@ function StatusCards({
         const Icon = card.icon;
         return (
           <div className="status-cell" key={card.label}>
-            <Icon size={18} />
+            <Icon className={card.tone} size={18} />
             <span>{card.label}</span>
-            <strong>{card.value}</strong>
+            <strong title={card.value}>{card.value}</strong>
+            {card.hint ? <small>{card.hint}</small> : null}
           </div>
         );
       })}
@@ -232,11 +228,10 @@ function ConfigPanel({
     <section className="panel config-panel">
       <div className="panel-heading">
         <div>
-          <span className="panel-kicker">CONFIGURATION</span>
           <h2>连接与固件</h2>
           <p>{configPath || "配置路径待加载"}</p>
         </div>
-        <Wrench size={20} />
+        <Settings2 size={20} />
       </div>
 
       <div className="form-grid compact">
@@ -364,7 +359,6 @@ function ActionPanel({
     <section className="panel action-panel">
       <div className="panel-heading">
         <div>
-          <span className="panel-kicker">RUN CENTER</span>
           <h2>执行控制</h2>
           <p>{toolDir || "后端路径待加载"}</p>
         </div>
@@ -374,9 +368,10 @@ function ActionPanel({
       <button type="button" className="launch-button" onClick={() => onRunAction(primaryAction.action)} disabled={isRunning}>
         <PrimaryIcon size={24} />
         <span>
-          <strong>{activeAction === primaryAction.action ? "烧录中" : primaryAction.label}</strong>
+          <strong>{activeAction === primaryAction.action ? "烧录中" : "烧录固件"}</strong>
           <small>{config.skipBuildOnFlash ? "跳过编译，直接烧录固件" : "编译后烧录固件"}</small>
         </span>
+        <Play size={18} />
       </button>
 
       <div className="action-grid">
@@ -479,8 +474,7 @@ function LogPanel({
     <section className="panel log-panel">
       <div className="terminal-toolbar">
         <div>
-          <span className="panel-kicker">OUTPUT</span>
-          <h2>日志</h2>
+          <h2>运行日志</h2>
           <p>{isRunning ? `正在${actionLabel(activeAction as EspAction)}` : statusText}</p>
         </div>
         <div className="terminal-actions">
@@ -771,7 +765,13 @@ function App() {
             runStateClass={runStateClass}
           />
 
-          <StatusCards config={config} portStateText={portStateText} statusText={statusText} />
+          <StatusCards
+            config={config}
+            configPath={configPath}
+            logText={logText}
+            portStateText={portStateText}
+            statusText={statusText}
+          />
 
           <div className="workspace-grid">
             <ConfigPanel

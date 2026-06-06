@@ -37,6 +37,10 @@
   "build": {
     "appId": "com.aki.tool",
     "productName": "AKI-TOOL",
+    "npmRebuild": false,
+    "asarUnpack": [
+      "**/*.node"
+    ],
     "directories": {
       "output": "release"
     },

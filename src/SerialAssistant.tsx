@@ -524,7 +524,6 @@ export function SerialAssistant({ api, isDesktop }: SerialAssistantProps) {
     <main className="workspace serial-workspace">
       <header className="workspace-header">
         <div className="title-block">
-          <div className="eyebrow">SERIAL ASSISTANT</div>
           <h1>串口助手</h1>
           <p>{configPath || "串口配置待加载"}</p>
         </div>
@@ -732,8 +731,7 @@ export function SerialAssistant({ api, isDesktop }: SerialAssistantProps) {
         <section className={`panel serial-terminal-panel ${config.terminalMode ? "terminal-mode" : ""}`}>
           <div className="terminal-toolbar">
             <div>
-              <span className="panel-kicker">{config.terminalMode ? "TERMINAL" : "RECEIVE"}</span>
-              <h2>{config.terminalMode ? "终端窗口" : "接收窗口"}</h2>
+              <h2>{config.terminalMode ? "终端窗口" : "接收与发送"}</h2>
               <p>{statusText}</p>
             </div>
             <div className="terminal-actions">
