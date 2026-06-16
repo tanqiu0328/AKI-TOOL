@@ -28,14 +28,14 @@ import type { ActionFinishedEvent, ActionOutputEvent, EspAction, EspConfig, Tool
 
 const initialConfig: EspConfig = {
   chip: "esp32",
-  port: "AUTO",
+  port: "",
   baud: 460800,
   monitorBaud: 115200,
   idfExport: "C:\\esp\\v5.4.4\\esp-idf\\export.bat",
   projectDir: "",
   firmwareDir: "",
   skipBuildOnFlash: true,
-  autoPort: true,
+  autoPort: false,
   manualDownloadMode: true,
   openMonitorAfterFlash: false,
   logDir: "logs"
@@ -74,6 +74,10 @@ function uniqueValues(values: string[]) {
 
 function actionLabel(action: EspAction) {
   return actionItems.find((item) => item.action === action)?.label ?? action;
+}
+
+function actionNeedsPort(action: EspAction) {
+  return action === "Flash" || action === "Erase" || action === "Monitor";
 }
 
 function getErrorMessage(error: unknown) {
@@ -187,7 +191,7 @@ function StatusCards({
   statusText: string;
 }) {
   const cards = [
-    { label: "串口状态", value: config.port || "AUTO", hint: portStateText, icon: Cable, tone: "" },
+    { label: "串口状态", value: config.port || "未选择", hint: portStateText, icon: Cable, tone: "" },
     { label: "当前芯片", value: config.chip, icon: Cpu, tone: "cyan" },
     { label: "任务状态", value: statusText, icon: CheckCircle2, tone: "green" },
     { label: "配置路径", value: compactPath(configPath), icon: FolderOpen, tone: "amber" },
@@ -250,16 +254,14 @@ function ConfigPanel({
 
         <label className="field">
           <span>串口</span>
-          <input
-            list="port-options"
-            value={config.port}
-            onChange={(event) => setField("port", event.target.value.toUpperCase())}
-          />
-          <datalist id="port-options">
+          <select value={config.port} onChange={(event) => setField("port", event.target.value)}>
+            <option value="">请选择串口</option>
             {portOptions.map((port) => (
-              <option key={port} value={port} />
+              <option key={port} value={port}>
+                {port}
+              </option>
             ))}
-          </datalist>
+          </select>
         </label>
 
         <label className="field">
@@ -367,7 +369,12 @@ function ActionPanel({
         <Play size={20} />
       </div>
 
-      <button type="button" className="launch-button" onClick={() => onRunAction(primaryAction.action)} disabled={isRunning}>
+      <button
+        type="button"
+        className="launch-button"
+        onClick={() => onRunAction(primaryAction.action)}
+        disabled={isRunning || (actionNeedsPort(primaryAction.action) && !config.port)}
+      >
         <PrimaryIcon size={24} />
         <span>
           <strong>{activeAction === primaryAction.action ? "烧录中" : "烧录固件"}</strong>
@@ -385,7 +392,7 @@ function ActionPanel({
               key={item.action}
               className={`action-button ${item.tone}`}
               onClick={() => onRunAction(item.action)}
-              disabled={isRunning}
+              disabled={isRunning || (actionNeedsPort(item.action) && !config.port)}
             >
               <Icon size={18} />
               {activeAction === item.action ? "执行中" : item.label}
@@ -399,7 +406,7 @@ function ActionPanel({
           type="button"
           className="action-button danger"
           onClick={() => onRunAction(eraseAction.action)}
-          disabled={isRunning}
+          disabled={isRunning || (actionNeedsPort(eraseAction.action) && !config.port)}
         >
           <EraseIcon size={18} />
           {activeAction === eraseAction.action ? "执行中" : eraseAction.label}
@@ -418,10 +425,6 @@ function ActionPanel({
             onChange={(event) => setField("skipBuildOnFlash", event.target.checked)}
           />
           <span>烧录时不编译</span>
-        </label>
-        <label className="switch-row">
-          <input type="checkbox" checked={config.autoPort} onChange={(event) => setField("autoPort", event.target.checked)} />
-          <span>自动串口</span>
         </label>
         <label className="switch-row">
           <input
@@ -513,7 +516,7 @@ function App() {
   const [lastExitCode, setLastExitCode] = useState<number | null>(null);
   const [activeTool, setActiveTool] = useState<ToolId>("esp");
 
-  const portOptions = useMemo(() => uniqueValues(["AUTO", config.port, ...ports]), [config.port, ports]);
+  const portOptions = useMemo(() => uniqueValues([config.port, ...ports]), [config.port, ports]);
 
   const setField = useCallback(<K extends keyof EspConfig>(key: K, value: EspConfig[K]) => {
     setConfig((current) => ({ ...current, [key]: value }));
@@ -601,6 +604,12 @@ function App() {
   }
 
   async function runAction(action: EspAction) {
+    if (actionNeedsPort(action) && !config.port) {
+      setStatusText("请先选择串口");
+      appendLog(`${actionLabel(action)}需要先选择串口。\n`);
+      return;
+    }
+
     setLogText("");
     setLastExitCode(null);
     stopRequestedRef.current = false;

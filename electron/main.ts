@@ -184,21 +184,21 @@ let lowerBoardSimStats: LowerBoardSimStats = {
 
 const defaultConfig: EspConfig = {
   chip: "esp32",
-  port: "AUTO",
+  port: "",
   baud: 460800,
   monitorBaud: 115200,
   idfExport: "C:\\esp\\v5.4.4\\esp-idf\\export.bat",
   projectDir: "",
   firmwareDir: "",
   skipBuildOnFlash: true,
-  autoPort: true,
+  autoPort: false,
   manualDownloadMode: true,
   openMonitorAfterFlash: false,
   logDir: "logs"
 };
 
 const defaultSerialConfig: SerialConfig = {
-  port: "AUTO",
+  port: "",
   baudRate: 115200,
   dataBits: 8,
   parity: "none",
@@ -231,7 +231,7 @@ const lowerBoardSimProtocol = {
 };
 
 const defaultLowerBoardSimConfig: LowerBoardSimConfig = {
-  port: "AUTO",
+  port: "",
   deviceType: lowerBoardSimProtocol.defaultDeviceType,
   busVoltageV: 230,
   boardTemperatureC: 25,
@@ -277,17 +277,18 @@ function readJsonFile<T>(filePath: string, fallback: T): T {
 
 function sanitizeConfig(input: Partial<EspConfig> | null | undefined): EspConfig {
   const merged = { ...defaultConfig, ...(input ?? {}) };
+  const rawPort = String(merged.port || "").trim().toUpperCase();
 
   return {
     chip: String(merged.chip || "esp32").trim().toLowerCase(),
-    port: String(merged.port || "AUTO").trim().toUpperCase(),
+    port: rawPort === "AUTO" ? "" : rawPort,
     baud: Number(merged.baud) || defaultConfig.baud,
     monitorBaud: Number(merged.monitorBaud) || defaultConfig.monitorBaud,
     idfExport: String(merged.idfExport || ""),
     projectDir: String(merged.projectDir || ""),
     firmwareDir: String(merged.firmwareDir || ""),
     skipBuildOnFlash: Boolean(merged.skipBuildOnFlash),
-    autoPort: Boolean(merged.autoPort),
+    autoPort: false,
     manualDownloadMode: Boolean(merged.manualDownloadMode),
     openMonitorAfterFlash: Boolean(merged.openMonitorAfterFlash),
     logDir: String(merged.logDir || "logs")
@@ -305,12 +306,13 @@ function sanitizeSerialConfig(input: Partial<SerialConfig> | null | undefined): 
   const textEncoding = textEncodingOptions.includes(merged.textEncoding) ? merged.textEncoding : "utf-8";
   const receiveMode = displayModeOptions.includes(merged.receiveMode) ? merged.receiveMode : "text";
   const sendMode = displayModeOptions.includes(merged.sendMode) ? merged.sendMode : "text";
+  const rawPort = String(merged.port || "").trim().toUpperCase();
   const baudRate = Number(merged.baudRate);
   const frameGapMs = Number(merged.frameGapMs);
   const timedSendIntervalMs = Number(merged.timedSendIntervalMs);
 
   return {
-    port: String(merged.port || "AUTO").trim().toUpperCase(),
+    port: rawPort === "AUTO" ? "" : rawPort,
     baudRate: Number.isFinite(baudRate) && baudRate > 0 ? Math.round(baudRate) : defaultSerialConfig.baudRate,
     dataBits,
     parity,
@@ -346,12 +348,13 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
 
 function sanitizeLowerBoardSimConfig(input: Partial<LowerBoardSimConfig> | null | undefined): LowerBoardSimConfig {
   const merged = { ...defaultLowerBoardSimConfig, ...(input ?? {}) };
+  const rawPort = String(merged.port || "").trim().toUpperCase();
   const deviceType = Math.round(
     clampNumber(merged.deviceType, 1, 9, defaultLowerBoardSimConfig.deviceType)
   );
 
   return {
-    port: String(merged.port || "AUTO").trim().toUpperCase(),
+    port: rawPort === "AUTO" ? "" : rawPort,
     deviceType,
     busVoltageV: Math.round(clampNumber(merged.busVoltageV, 0, 65535, defaultLowerBoardSimConfig.busVoltageV)),
     boardTemperatureC: Math.round(clampNumber(merged.boardTemperatureC, -40, 215, defaultLowerBoardSimConfig.boardTemperatureC)),
@@ -523,10 +526,6 @@ function getRunArgs(action: EspAction, config: EspConfig) {
     args.push("-SkipBuild");
   }
 
-  if (config.autoPort) {
-    args.push("-AutoPort");
-  }
-
   if (config.openMonitorAfterFlash && action === "Flash") {
     args.push("-OpenMonitorAfterFlash");
   }
@@ -605,12 +604,8 @@ async function listSerialPorts() {
 async function resolveSerialPortPath(config: SerialConfig) {
   const ports = await listSerialPorts();
 
-  if (!config.port || config.port === "AUTO") {
-    const firstPort = ports[0]?.path;
-    if (!firstPort) {
-      throw new Error("未发现串口。请检查 USB-UART 转接器和驱动。");
-    }
-    return firstPort;
+  if (!config.port) {
+    throw new Error("请先选择串口。");
   }
 
   const matchedPort = ports.find((port) => port.path.toUpperCase() === config.port.toUpperCase());
@@ -1264,12 +1259,8 @@ function handleLowerBoardSimData(chunk: Buffer) {
 async function resolveLowerBoardSimPortPath(config: LowerBoardSimConfig) {
   const ports = await listSerialPorts();
 
-  if (!config.port || config.port === "AUTO") {
-    const firstPort = ports[0]?.path;
-    if (!firstPort) {
-      throw new Error("未发现串口。请检查 USB-TTL 转接器和驱动。");
-    }
-    return firstPort;
+  if (!config.port) {
+    throw new Error("请先选择 USB-TTL 串口。");
   }
 
   const matchedPort = ports.find((port) => port.path.toUpperCase() === config.port.toUpperCase());
@@ -1442,6 +1433,9 @@ ipcMain.handle("esp:run-action", (_event, payload: { action: EspAction; config: 
 
   const actionId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const config = writeUserConfig(payload.config);
+  if (["Flash", "Erase", "Monitor"].includes(payload.action) && !config.port) {
+    throw new Error("请先选择 ESP 串口。");
+  }
   const toolDir = getEspToolDir();
   const scriptPath = path.join(toolDir, "esp_flash_tool.ps1");
   const command = buildPowerShellInvocation(scriptPath, getRunArgs(payload.action, config));

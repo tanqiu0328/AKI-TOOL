@@ -21,7 +21,7 @@ import type {
 } from "./types";
 
 const initialConfig: LowerBoardSimConfig = {
-  port: "AUTO",
+  port: "",
   deviceType: 0x02,
   busVoltageV: 230,
   boardTemperatureC: 25,
@@ -69,7 +69,7 @@ function formatHexWord(value: number) {
 }
 
 function uniquePortOptions(configPort: string, ports: SerialPortInfo[]) {
-  const values = ["AUTO", configPort, ...ports.map((port) => port.path)].filter(Boolean);
+  const values = [configPort, ...ports.map((port) => port.path)].filter(Boolean);
   return Array.from(new Set(values));
 }
 
@@ -252,17 +252,18 @@ export function LowerBoardSimulator({ api }: LowerBoardSimulatorProps) {
 
           <label className="field">
             <span>USB-TTL 端口</span>
-            <input
-              list="lower-board-port-options"
+            <select
               value={config.port}
               disabled={running}
-              onChange={(event) => setField("port", event.target.value.toUpperCase())}
-            />
-            <datalist id="lower-board-port-options">
+              onChange={(event) => setField("port", event.target.value)}
+            >
+              <option value="">请选择串口</option>
               {portOptions.map((port) => (
-                <option key={port} value={port} />
+                <option key={port} value={port}>
+                  {port}
+                </option>
               ))}
-            </datalist>
+            </select>
           </label>
 
           <div className="sim-protocol-row">
@@ -279,6 +280,7 @@ export function LowerBoardSimulator({ api }: LowerBoardSimulatorProps) {
               type="button"
               className={`action-button ${running ? "stop" : "primary"}`}
               onClick={() => (running ? void stopSimulator() : void startSimulator())}
+              disabled={!running && !config.port}
             >
               {running ? <Square size={17} /> : <Play size={17} />}
               {running ? "停止" : "启动"}

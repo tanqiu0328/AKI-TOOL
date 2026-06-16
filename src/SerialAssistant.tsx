@@ -30,7 +30,7 @@ import type {
 } from "./types";
 
 const initialSerialConfig: SerialConfig = {
-  port: "AUTO",
+  port: "",
   baudRate: 115200,
   dataBits: 8,
   parity: "none",
@@ -137,7 +137,7 @@ function appendWithLimit(current: string, addition: string) {
 }
 
 function uniquePortOptions(configPort: string, ports: SerialPortInfo[]) {
-  const values = ["AUTO", configPort, ...ports.map((port) => port.path)].filter(Boolean);
+  const values = [configPort, ...ports.map((port) => port.path)].filter(Boolean);
   return Array.from(new Set(values));
 }
 
@@ -552,16 +552,14 @@ export function SerialAssistant({ api, isDesktop }: SerialAssistantProps) {
           <div className="form-grid serial-form">
             <label className="field">
               <span>端口名</span>
-              <input
-                list="serial-port-options"
-                value={config.port}
-                onChange={(event) => setField("port", event.target.value.toUpperCase())}
-              />
-              <datalist id="serial-port-options">
+              <select value={config.port} onChange={(event) => setField("port", event.target.value)}>
+                <option value="">请选择串口</option>
                 {portOptions.map((port) => (
-                  <option key={port} value={port} />
+                  <option key={port} value={port}>
+                    {port}
+                  </option>
                 ))}
-              </datalist>
+              </select>
             </label>
 
             <label className="field">
@@ -629,6 +627,7 @@ export function SerialAssistant({ api, isDesktop }: SerialAssistantProps) {
               type="button"
               className={`action-button ${connected ? "stop" : "primary"}`}
               onClick={() => (connected ? void closeSerial() : void openSerial())}
+              disabled={!connected && !config.port}
             >
               {connected ? <Unplug size={17} /> : <Power size={17} />}
               {connected ? "关闭" : "打开"}
@@ -775,7 +774,12 @@ export function SerialAssistant({ api, isDesktop }: SerialAssistantProps) {
                 spellCheck={false}
                 aria-label="发送内容"
               />
-              <button type="button" className="serial-send-button" onClick={() => void sendData(false)} disabled={!connected && !config.autoOpen}>
+              <button
+                type="button"
+                className="serial-send-button"
+                onClick={() => void sendData(false)}
+                disabled={!connected && (!config.autoOpen || !config.port)}
+              >
                 <Send size={34} />
               </button>
             </div>

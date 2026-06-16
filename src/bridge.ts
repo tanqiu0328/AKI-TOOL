@@ -16,14 +16,14 @@ import type {
 
 const fallbackConfig: EspConfig = {
   chip: "esp32",
-  port: "AUTO",
+  port: "COM3",
   baud: 460800,
   monitorBaud: 115200,
   idfExport: "C:\\esp\\v5.4.4\\esp-idf\\export.bat",
   projectDir: "",
   firmwareDir: "",
   skipBuildOnFlash: true,
-  autoPort: true,
+  autoPort: false,
   manualDownloadMode: true,
   openMonitorAfterFlash: false,
   logDir: "logs"
@@ -354,7 +354,7 @@ function createFallbackApi(): AkiApi {
         { path: "COM6", manufacturer: "USB-SERIAL CH340" }
       ],
       open: async (config) => {
-        fallbackSerialConfigState = { ...config, port: config.port === "AUTO" ? "COM3" : config.port };
+        fallbackSerialConfigState = { ...config };
         fallbackSerialSignals = {
           ...fallbackSerialSignals,
           dtr: config.dtr,
@@ -439,7 +439,7 @@ function createFallbackApi(): AkiApi {
         { path: "COM10", manufacturer: "USB-TTL mock adapter" }
       ],
       start: async (config) => {
-        fallbackLowerBoardSimConfigState = { ...config, port: config.port === "AUTO" ? "COM9" : config.port };
+        fallbackLowerBoardSimConfigState = { ...config };
         fallbackLowerBoardSimOpen = true;
         fallbackLowerBoardSimSpeed = 0;
         resetFallbackLowerBoardSimStats();

@@ -1,13 +1,13 @@
 {
   "chip": "esp32",
-  "port": "AUTO",
+  "port": "",
   "baud": 460800,
   "monitorBaud": 115200,
   "idfExport": "C:\\esp\\v5.4.4\\esp-idf\\export.bat",
   "projectDir": "",
   "firmwareDir": "",
   "skipBuildOnFlash": true,
-  "autoPort": true,
+  "autoPort": false,
   "manualDownloadMode": true,
   "openMonitorAfterFlash": false,
   "logDir": "logs"
