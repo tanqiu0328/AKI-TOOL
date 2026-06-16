@@ -1,6 +1,6 @@
 export type EspAction = "Doctor" | "ListPorts" | "Build" | "Flash" | "Erase" | "Monitor";
 
-export type ToolId = "esp" | "serial";
+export type ToolId = "esp" | "serial" | "lowerBoardSim";
 
 export type EspConfig = {
   chip: string;
@@ -120,6 +120,76 @@ export type SerialWritePayload = {
   appendLineEnding?: boolean;
 };
 
+export type LowerBoardSimConfig = {
+  port: string;
+  deviceType: number;
+  busVoltageV: number;
+  boardTemperatureC: number;
+  faultCode: number;
+  speedRampRpmPerSecond: number;
+  responseDelayMs: number;
+  offlineMode: boolean;
+  dropRatePercent: number;
+  badChecksumRatePercent: number;
+};
+
+export type LowerBoardSimCommandFrame = {
+  deviceType: number;
+  run: boolean;
+  targetSpeedRpm: number;
+  faultClear: boolean;
+  reserved: number;
+};
+
+export type LowerBoardSimStatusFrame = {
+  deviceType: number;
+  currentSpeedRpm: number;
+  busVoltageV: number;
+  busCurrentMa: number;
+  motorPowerW: number;
+  boardTemperatureC: number;
+  faultCode: number;
+};
+
+export type LowerBoardSimStats = {
+  rxBytes: number;
+  txBytes: number;
+  commandFrames: number;
+  statusFrames: number;
+  crcErrors: number;
+  syncErrors: number;
+  droppedResponses: number;
+  badChecksumResponses: number;
+  faultClearPulses: number;
+  lastCommand?: LowerBoardSimCommandFrame;
+  lastStatus?: LowerBoardSimStatusFrame;
+};
+
+export type LowerBoardSimStatusEvent = {
+  status: SerialConnectionStatus;
+  running: boolean;
+  message: string;
+  port: string;
+  config: LowerBoardSimConfig;
+  stats: LowerBoardSimStats;
+  timestamp: number;
+};
+
+export type LowerBoardSimFrameEvent = {
+  direction: "rx" | "tx";
+  frameType: "command" | "status" | "error";
+  hex: string;
+  message: string;
+  command?: LowerBoardSimCommandFrame;
+  statusFrame?: LowerBoardSimStatusFrame;
+  timestamp: number;
+};
+
+export type LowerBoardSimConfigPayload = {
+  config: LowerBoardSimConfig;
+  configPath: string;
+};
+
 export type AkiApi = {
   getMeta: () => Promise<AppMeta>;
   esp: {
@@ -141,6 +211,17 @@ export type AkiApi = {
     setControlLines: (signals: Pick<SerialLineSignals, "dtr" | "rts">) => Promise<SerialLineSignals>;
     onData: (callback: (event: SerialDataEvent) => void) => () => void;
     onStatus: (callback: (event: SerialStatusEvent) => void) => () => void;
+  };
+  lowerBoardSim: {
+    getConfig: () => Promise<LowerBoardSimConfigPayload>;
+    saveConfig: (config: LowerBoardSimConfig) => Promise<LowerBoardSimConfigPayload>;
+    listPorts: () => Promise<SerialPortInfo[]>;
+    start: (config: LowerBoardSimConfig) => Promise<LowerBoardSimStatusEvent>;
+    stop: () => Promise<LowerBoardSimStatusEvent>;
+    updateConfig: (config: LowerBoardSimConfig) => Promise<LowerBoardSimStatusEvent>;
+    resetStats: () => Promise<LowerBoardSimStatusEvent>;
+    onStatus: (callback: (event: LowerBoardSimStatusEvent) => void) => () => void;
+    onFrame: (callback: (event: LowerBoardSimFrameEvent) => void) => () => void;
   };
   dialog: {
     selectDirectory: () => Promise<string>;

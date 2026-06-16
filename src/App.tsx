@@ -22,6 +22,7 @@ import {
   Trash2
 } from "lucide-react";
 import { getAkiApi } from "./bridge";
+import { LowerBoardSimulator } from "./LowerBoardSimulator";
 import { SerialAssistant } from "./SerialAssistant";
 import type { ActionFinishedEvent, ActionOutputEvent, EspAction, EspConfig, ToolId } from "./types";
 
@@ -46,6 +47,7 @@ const baudOptions = [115200, 230400, 460800, 921600, 1500000];
 const toolItems = [
   { id: "esp", name: "ESP 烧录", meta: "flash / monitor", icon: Cpu, enabled: true },
   { id: "serial", name: "串口助手", meta: "serial debug", icon: Terminal, enabled: true },
+  { id: "lowerBoardSim", name: "下板模拟", meta: "lower board", icon: Cable, enabled: true },
   { id: "package", name: "固件包", meta: "未开放", icon: HardDriveDownload, enabled: false },
   { id: "settings", name: "全局设置", meta: "未开放", icon: Settings2, enabled: false }
 ];
@@ -756,6 +758,8 @@ function App() {
 
       {activeTool === "serial" ? (
         <SerialAssistant api={api} isDesktop={isDesktop} />
+      ) : activeTool === "lowerBoardSim" ? (
+        <LowerBoardSimulator api={api} />
       ) : (
         <main className="workspace">
           <WorkspaceHeader

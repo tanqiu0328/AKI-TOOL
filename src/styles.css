@@ -1076,6 +1076,196 @@ textarea:focus {
   white-space: nowrap;
 }
 
+.lower-sim-workspace {
+  gap: 0;
+}
+
+.sim-layout {
+  display: grid;
+  grid-template-columns: 318px minmax(0, 1fr);
+  gap: 16px;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.sim-control-panel {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
+  padding: 14px;
+  overflow: visible;
+}
+
+.sim-dashboard-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(240px, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sim-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sim-protocol-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 34px;
+  padding: 7px 10px;
+  color: #5f687b;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.sim-protocol-row strong {
+  color: var(--blue-strong);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.sim-fault-code {
+  display: grid;
+  align-items: end;
+  min-width: 0;
+}
+
+.sim-fault-code span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  min-width: 0;
+  padding: 0 8px;
+  color: #8f5660;
+  background: var(--red-soft);
+  border: 1px solid #f3d0d6;
+  border-radius: 8px;
+  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.sim-apply-button {
+  width: 100%;
+}
+
+.sim-dashboard-body {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(247, 250, 253, 0.7);
+  border-bottom: 1px solid var(--line);
+}
+
+.sim-status-grid {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sim-stat-cell {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  min-height: 58px;
+  padding: 9px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sim-stat-cell span {
+  overflow: hidden;
+  color: #69768a;
+  font-size: 11px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sim-stat-cell strong {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sim-live-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sim-live-block {
+  min-width: 0;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sim-live-block > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.sim-live-block dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin: 9px 0 0;
+}
+
+.sim-live-block dt,
+.sim-live-block dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sim-live-block dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.sim-live-block dd {
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.sim-frame-log {
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 14px 16px;
+  overflow: auto;
+  color: #d8f7ea;
+  background: linear-gradient(180deg, var(--terminal), var(--terminal-soft));
+  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 @keyframes serial-caret-blink {
   50% {
     opacity: 0;
@@ -1120,6 +1310,15 @@ textarea:focus {
     grid-template-columns: 236px minmax(0, 1fr);
     gap: 12px;
   }
+
+  .sim-layout {
+    grid-template-columns: 300px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .sim-status-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1260px) {
@@ -1146,6 +1345,10 @@ textarea:focus {
 
   .workspace-grid {
     grid-template-columns: minmax(0, 1fr) minmax(320px, 0.72fr);
+  }
+
+  .sim-status-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -1220,5 +1423,18 @@ textarea:focus {
   .serial-send-panel textarea,
   .serial-send-button {
     height: 58px;
+  }
+
+  .sim-control-panel {
+    padding: 12px;
+  }
+
+  .sim-dashboard-panel {
+    grid-template-rows: auto auto minmax(170px, 1fr);
+  }
+
+  .sim-dashboard-body {
+    gap: 8px;
+    padding: 10px;
   }
 }
