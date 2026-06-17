@@ -255,6 +255,54 @@ function getUserEspDir() {
   return path.join(app.getPath("userData"), "esp-flasher");
 }
 
+function shouldSkipEspToolFile(relativePath: string) {
+  return relativePath === "flash_tool.config.json" || relativePath === "logs" || relativePath.startsWith(`logs${path.sep}`);
+}
+
+function copyBundledEspToolDir(sourceRoot: string, targetRoot: string, currentDir = sourceRoot) {
+  if (!fs.existsSync(currentDir)) {
+    return;
+  }
+
+  for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+    const sourcePath = path.join(currentDir, entry.name);
+    const relativePath = path.relative(sourceRoot, sourcePath);
+
+    if (shouldSkipEspToolFile(relativePath)) {
+      continue;
+    }
+
+    const targetPath = path.join(targetRoot, relativePath);
+
+    if (entry.isDirectory()) {
+      copyBundledEspToolDir(sourceRoot, targetRoot, sourcePath);
+      continue;
+    }
+
+    if (entry.isFile()) {
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+      fs.copyFileSync(sourcePath, targetPath);
+    }
+  }
+}
+
+function syncBundledEspTool() {
+  const bundledDir = getEspToolDir();
+  const userDir = getUserEspDir();
+
+  fs.mkdirSync(userDir, { recursive: true });
+
+  if (fs.existsSync(bundledDir)) {
+    copyBundledEspToolDir(bundledDir, userDir);
+  }
+
+  return userDir;
+}
+
+function getRunnableEspToolDir() {
+  return syncBundledEspTool();
+}
+
 function getUserConfigPath() {
   return path.join(getUserEspDir(), "flash_tool.config.json");
 }
@@ -375,7 +423,7 @@ function sanitizeLowerBoardSimConfig(input: Partial<LowerBoardSimConfig> | null 
 }
 
 function readDefaultConfig() {
-  const examplePath = path.join(getEspToolDir(), "flash_tool.config.example.json");
+  const examplePath = path.join(getRunnableEspToolDir(), "flash_tool.config.example.json");
   return sanitizeConfig(readJsonFile<Partial<EspConfig>>(examplePath, defaultConfig));
 }
 
@@ -542,7 +590,7 @@ async function runListPorts() {
   ].join("; ");
 
   return new Promise<string[]>((resolve) => {
-    const child = spawnPowerShell(script, getEspToolDir());
+    const child = spawnPowerShell(script, getRunnableEspToolDir());
     let output = "";
 
     child.stdout.on("data", (chunk: Buffer) => {
@@ -1415,7 +1463,7 @@ ipcMain.handle("app:get-meta", () => ({
 ipcMain.handle("esp:get-config", () => ({
   config: readUserConfig(),
   configPath: getUserConfigPath(),
-  toolDir: getEspToolDir(),
+  toolDir: getRunnableEspToolDir(),
   userDataDir: getUserEspDir()
 }));
 
@@ -1436,7 +1484,7 @@ ipcMain.handle("esp:run-action", (_event, payload: { action: EspAction; config: 
   if (["Flash", "Erase", "Monitor"].includes(payload.action) && !config.port) {
     throw new Error("请先选择 ESP 串口。");
   }
-  const toolDir = getEspToolDir();
+  const toolDir = getRunnableEspToolDir();
   const scriptPath = path.join(toolDir, "esp_flash_tool.ps1");
   const command = buildPowerShellInvocation(scriptPath, getRunArgs(payload.action, config));
   const child = spawnPowerShell(command, toolDir);
