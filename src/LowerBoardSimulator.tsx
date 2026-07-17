@@ -245,7 +245,7 @@ export function LowerBoardSimulator({ api }: LowerBoardSimulatorProps) {
 
       <div className="sim-layout">
         <section className="panel sim-control-panel">
-          <div className="serial-section-heading">
+          <div className="sim-section-heading">
             <Cable size={18} />
             <h2>端口</h2>
           </div>
@@ -271,7 +271,7 @@ export function LowerBoardSimulator({ api }: LowerBoardSimulatorProps) {
             <strong>4800 8N1</strong>
           </div>
 
-          <div className="serial-open-row">
+          <div className="sim-open-row">
             <button type="button" className="action-button" onClick={() => void refreshPorts()}>
               <RefreshCw size={17} />
               刷新
@@ -287,7 +287,7 @@ export function LowerBoardSimulator({ api }: LowerBoardSimulatorProps) {
             </button>
           </div>
 
-          <div className="serial-section-heading">
+          <div className="sim-section-heading">
             <Gauge size={18} />
             <h2>模拟参数</h2>
           </div>
@@ -346,7 +346,7 @@ export function LowerBoardSimulator({ api }: LowerBoardSimulatorProps) {
             />
           </label>
 
-          <div className="serial-section-heading">
+          <div className="sim-section-heading">
             <AlertTriangle size={18} />
             <h2>故障注入</h2>
           </div>

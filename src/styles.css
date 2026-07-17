@@ -761,40 +761,7 @@ textarea:focus {
   white-space: pre-wrap;
 }
 
-.serial-workspace {
-  gap: 0;
-}
-
-.serial-layout {
-  display: grid;
-  grid-template-columns: 244px minmax(0, 1fr);
-  gap: 16px;
-  min-height: 0;
-  flex: 0 0 auto;
-}
-
-.serial-control-panel {
-  display: grid;
-  align-content: start;
-  gap: 10px;
-  min-height: 0;
-  padding: 14px;
-  overflow: visible;
-}
-
-.serial-terminal-panel {
-  display: grid;
-  grid-template-rows: auto minmax(220px, 1fr) 92px auto;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.serial-terminal-panel.terminal-mode {
-  grid-template-rows: auto minmax(260px, 1fr) auto;
-}
-
-.serial-section-heading {
+.sim-section-heading {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -804,276 +771,22 @@ textarea:focus {
   font-weight: 850;
 }
 
-.serial-section-heading svg {
+.sim-section-heading svg {
   color: var(--blue);
 }
 
-.serial-section-heading h2 {
+.sim-section-heading h2 {
   font-size: 13px;
 }
 
-.serial-form {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.serial-form .field:first-child {
-  grid-column: 1 / -1;
-}
-
-.serial-open-row,
-.line-control-grid,
-.serial-switch-grid {
+.sim-open-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
-.serial-switch-grid {
-  grid-template-columns: 1fr;
-}
-
-.serial-open-row .action-button {
+.sim-open-row .action-button {
   width: 100%;
-}
-
-.line-control-grid .switch-row,
-.serial-switch-grid .switch-row,
-.serial-control-panel > .switch-row {
-  min-height: 32px;
-  padding: 6px 9px;
-}
-
-.signal-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.signal-row span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 28px;
-  color: #627086;
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  font-size: 10px;
-  font-weight: 850;
-  white-space: nowrap;
-}
-
-.signal-row span.active {
-  color: #0f7b5f;
-  background: var(--green-soft);
-  border-color: #b7ebd8;
-}
-
-.segmented-field {
-  display: grid;
-  gap: 5px;
-}
-
-.segmented-field > span {
-  color: #5f687b;
-  font-size: 11px;
-  font-weight: 850;
-}
-
-.segmented-control {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2px;
-  height: 34px;
-  padding: 3px;
-  background: #edf3f8;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-}
-
-.segmented-control button {
-  min-width: 0;
-  color: #66758a;
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.segmented-control button:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-.segmented-control button.active {
-  color: var(--blue-strong);
-  background: #ffffff;
-  box-shadow: 0 5px 12px rgba(31, 45, 71, 0.08);
-}
-
-.inline-field > div {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.serial-control-panel .field {
-  gap: 5px;
-}
-
-.serial-control-panel .field > span {
-  font-size: 11px;
-}
-
-.serial-control-panel input,
-.serial-control-panel select {
-  height: 32px;
-  padding-right: 9px;
-  padding-left: 9px;
-  font-size: 12px;
-}
-
-.inline-field input[type="number"] {
-  flex: 1;
-}
-
-.inline-field input[type="checkbox"] {
-  width: 15px;
-  height: 15px;
-  flex: 0 0 auto;
-  accent-color: var(--blue);
-}
-
-.inline-field small {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.serial-receive-output {
-  height: 100%;
-  min-height: 0;
-  margin: 0;
-  padding: 15px 16px;
-  overflow: auto;
-  color: #172033;
-  background: #fbfdff;
-  border-bottom: 1px solid var(--line);
-  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
-  font-size: 13px;
-  line-height: 1.55;
-  white-space: pre-wrap;
-  word-break: break-word;
-  outline: none;
-}
-
-.serial-receive-output:focus {
-  border-color: rgba(47, 103, 199, 0.34);
-  box-shadow: inset 0 0 0 2px rgba(47, 103, 199, 0.12);
-}
-
-.serial-receive-text {
-  margin: 0;
-  font: inherit;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.serial-terminal-draft-line {
-  display: inline;
-}
-
-.serial-terminal-caret {
-  display: inline-block;
-  width: 7px;
-  height: 1.15em;
-  margin-left: 1px;
-  vertical-align: -0.18em;
-  background: #6f7787;
-  animation: serial-caret-blink 1s steps(1) infinite;
-}
-
-.serial-send-panel {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 56px;
-  gap: 8px;
-  padding: 8px;
-  background: rgba(247, 250, 253, 0.88);
-  border-bottom: 1px solid var(--line);
-}
-
-.serial-send-panel textarea {
-  height: 76px;
-  resize: none;
-  padding: 10px 11px;
-  color: var(--text);
-  background: #ffffff;
-  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.serial-send-button {
-  display: grid;
-  width: 56px;
-  height: 76px;
-  place-items: center;
-  color: #ffffff;
-  background: var(--blue);
-  border: 1px solid rgba(47, 103, 199, 0.28);
-  border-radius: 8px;
-  box-shadow: 0 10px 22px rgba(47, 103, 199, 0.18);
-  transition:
-    background 150ms ease,
-    opacity 150ms ease;
-}
-
-.serial-send-button:hover {
-  background: var(--blue-strong);
-}
-
-.serial-send-button:disabled {
-  color: rgba(255, 255, 255, 0.7);
-  opacity: 0.58;
-}
-
-.serial-counter-bar {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-height: 34px;
-  padding: 0 12px;
-  color: #5f687b;
-  background: rgba(255, 255, 255, 0.78);
-  font-size: 12px;
-  font-weight: 850;
-}
-
-.serial-counter-bar button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 26px;
-  min-width: 0;
-  margin-left: auto;
-  padding: 0 9px;
-  color: #146b8d;
-  background: var(--cyan-soft);
-  border: 1px solid #bdeef4;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 850;
-}
-
-.serial-mode-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--muted);
-  white-space: nowrap;
 }
 
 .lower-sim-workspace {
@@ -1266,12 +979,6 @@ textarea:focus {
   word-break: break-word;
 }
 
-@keyframes serial-caret-blink {
-  50% {
-    opacity: 0;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -1303,11 +1010,6 @@ textarea:focus {
 
   .workspace-grid {
     grid-template-columns: minmax(0, 1fr) minmax(340px, 0.72fr);
-    gap: 12px;
-  }
-
-  .serial-layout {
-    grid-template-columns: 236px minmax(0, 1fr);
     gap: 12px;
   }
 
@@ -1384,14 +1086,12 @@ textarea:focus {
   }
 
   .config-panel,
-  .action-panel,
-  .serial-control-panel {
+  .action-panel {
     padding: 12px;
   }
 
   .form-grid,
-  .path-stack,
-  .serial-control-panel {
+  .path-stack {
     gap: 8px;
   }
 
@@ -1410,19 +1110,6 @@ textarea:focus {
 
   .log-panel {
     grid-template-rows: auto minmax(150px, 1fr);
-  }
-
-  .serial-terminal-panel {
-    grid-template-rows: auto minmax(170px, 1fr) 74px auto;
-  }
-
-  .serial-terminal-panel.terminal-mode {
-    grid-template-rows: auto minmax(210px, 1fr) auto;
-  }
-
-  .serial-send-panel textarea,
-  .serial-send-button {
-    height: 58px;
   }
 
   .sim-control-panel {

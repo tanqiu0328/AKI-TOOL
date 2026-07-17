@@ -17,63 +17,7 @@ type EspConfig = {
   logDir: string;
 };
 
-type SerialParity = "none" | "even" | "odd" | "mark" | "space";
-type SerialTextEncoding = "utf-8" | "gbk";
-type SerialDisplayMode = "text" | "hex";
-type SerialDataBits = 5 | 6 | 7 | 8;
-type SerialStopBits = 1 | 1.5 | 2;
-
-type SerialConfig = {
-  port: string;
-  baudRate: number;
-  dataBits: SerialDataBits;
-  parity: SerialParity;
-  stopBits: SerialStopBits;
-  textEncoding: SerialTextEncoding;
-  receiveMode: SerialDisplayMode;
-  sendMode: SerialDisplayMode;
-  showTimestamp: boolean;
-  frameGapMs: number;
-  terminalMode: boolean;
-  showSent: boolean;
-  timedSend: boolean;
-  timedSendIntervalMs: number;
-  autoOpen: boolean;
-  autoReconnect: boolean;
-  dtr: boolean;
-  rts: boolean;
-};
-
-type SerialLineSignals = {
-  dtr: boolean;
-  rts: boolean;
-  cts: boolean | null;
-  dsr: boolean | null;
-  dcd: boolean | null;
-};
-
-type SerialDataEvent = {
-  direction: "rx" | "tx";
-  base64: string;
-  byteLength: number;
-  timestamp: number;
-};
-
-type SerialStatusEvent = {
-  status: "closed" | "opening" | "open" | "closing" | "reconnecting" | "error";
-  connected: boolean;
-  message: string;
-  port: string;
-  signals: SerialLineSignals;
-  timestamp: number;
-};
-
-type SerialWritePayload = {
-  data: string;
-  mode: SerialDisplayMode;
-  encoding: SerialTextEncoding;
-  appendLineEnding?: boolean;
-};
+type SerialConnectionStatus = "closed" | "opening" | "open" | "closing" | "reconnecting" | "error";
 
 type LowerBoardSimConfig = {
   port: string;
@@ -121,7 +65,7 @@ type LowerBoardSimStats = {
 };
 
 type LowerBoardSimStatusEvent = {
-  status: SerialStatusEvent["status"];
+  status: SerialConnectionStatus;
   running: boolean;
   message: string;
   port: string;
@@ -160,26 +104,6 @@ contextBridge.exposeInMainWorld("aki", {
         callback(payload);
       ipcRenderer.on("esp:action-finished", listener);
       return () => ipcRenderer.removeListener("esp:action-finished", listener);
-    }
-  },
-  serial: {
-    getConfig: () => ipcRenderer.invoke("serial:get-config"),
-    saveConfig: (config: SerialConfig) => ipcRenderer.invoke("serial:save-config", config),
-    listPorts: () => ipcRenderer.invoke("serial:list-ports"),
-    open: (config: SerialConfig) => ipcRenderer.invoke("serial:open", config),
-    close: () => ipcRenderer.invoke("serial:close"),
-    write: (payload: SerialWritePayload) => ipcRenderer.invoke("serial:write", payload),
-    setControlLines: (signals: Pick<SerialLineSignals, "dtr" | "rts">) =>
-      ipcRenderer.invoke("serial:set-control-lines", signals),
-    onData: (callback: (event: SerialDataEvent) => void) => {
-      const listener = (_: Electron.IpcRendererEvent, payload: SerialDataEvent) => callback(payload);
-      ipcRenderer.on("serial:data", listener);
-      return () => ipcRenderer.removeListener("serial:data", listener);
-    },
-    onStatus: (callback: (event: SerialStatusEvent) => void) => {
-      const listener = (_: Electron.IpcRendererEvent, payload: SerialStatusEvent) => callback(payload);
-      ipcRenderer.on("serial:status", listener);
-      return () => ipcRenderer.removeListener("serial:status", listener);
     }
   },
   lowerBoardSim: {

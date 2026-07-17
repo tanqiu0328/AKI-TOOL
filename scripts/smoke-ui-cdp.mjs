@@ -564,107 +564,9 @@ async function main() {
         clicks.push(await clickButton(match));
       }
 
-      function setCheckbox(labelText, checked) {
-        const label = Array.from(document.querySelectorAll("label")).find((item) => item.textContent.includes(labelText));
-        const input = label?.querySelector("input[type='checkbox']");
-        if (!input) {
-          return false;
-        }
-        if (input.checked !== checked) {
-          input.click();
-        }
-        return true;
-      }
-
-      function pressTerminalKey(target, key) {
-        target.dispatchEvent(new KeyboardEvent("keydown", {
-          key,
-          bubbles: true,
-          cancelable: true
-        }));
-      }
-
-      const serialChecks = {
-        foundTool: clickTool("串口助手"),
-        loaded: false,
-        controlHasNoInternalScroll: false,
-        sendPanelBeforeTerminal: false,
-        sendPanelHiddenInTerminal: false,
-        draftBeforeEnter: "",
-        statusChangedAfterEnter: false,
-        counterChangedAfterEnter: false,
-        controlMetrics: null,
-        failures: []
-      };
-
-      if (serialChecks.foundTool) {
-        serialChecks.loaded = await waitFor(() => Boolean(document.querySelector(".serial-layout")));
-      }
-
-      if (serialChecks.loaded) {
-        setCheckbox("终端模式", false);
-        await waitFor(() => !document.querySelector(".serial-terminal-panel")?.classList.contains("terminal-mode"));
-
-        const control = document.querySelector(".serial-control-panel");
-        serialChecks.controlHasNoInternalScroll = Boolean(control && control.scrollHeight <= control.clientHeight + 1);
-        serialChecks.controlMetrics = control
-          ? {
-              scrollHeight: control.scrollHeight,
-              clientHeight: control.clientHeight,
-              childCount: control.children.length
-            }
-          : null;
-        serialChecks.sendPanelBeforeTerminal = Boolean(document.querySelector(".serial-send-panel"));
-
-        setCheckbox("终端模式", true);
-        if (${JSON.stringify(target)} === "preview") {
-          setCheckbox("自动打开串口", true);
-        }
-        await waitFor(() => document.querySelector(".serial-terminal-panel")?.classList.contains("terminal-mode"));
-
-        const terminal = document.querySelector(".serial-receive-output");
-        serialChecks.sendPanelHiddenInTerminal = !document.querySelector(".serial-send-panel");
-
-        if (terminal) {
-          terminal.focus();
-          for (const key of ["h", "e", "l", "x", "Backspace", "p"]) {
-            pressTerminalKey(terminal, key);
-          }
-          await waitFor(() => (document.querySelector(".serial-terminal-draft-line")?.textContent || "") === "help");
-          serialChecks.draftBeforeEnter = document.querySelector(".serial-terminal-draft-line")?.textContent || "";
-
-          const statusBefore = document.querySelector(".terminal-toolbar p")?.textContent || "";
-          const counterBefore = document.querySelector(".serial-counter-bar")?.textContent || "";
-          pressTerminalKey(terminal, "Enter");
-          await new Promise((resolve) => setTimeout(resolve, 900));
-          const statusAfter = document.querySelector(".terminal-toolbar p")?.textContent || "";
-          const counterAfter = document.querySelector(".serial-counter-bar")?.textContent || "";
-          serialChecks.statusChangedAfterEnter = statusAfter !== statusBefore;
-          serialChecks.counterChangedAfterEnter = counterAfter !== counterBefore;
-        }
-      }
-
-      if (!serialChecks.foundTool) {
-        serialChecks.failures.push("串口助手导航不存在");
-      }
-      if (!serialChecks.loaded) {
-        serialChecks.failures.push("串口助手页面未加载");
-      }
-      if (!serialChecks.controlHasNoInternalScroll) {
-        serialChecks.failures.push("串口设置栏在 1360x900 下出现内部滚动");
-      }
-      if (!serialChecks.sendPanelBeforeTerminal) {
-        serialChecks.failures.push("非终端模式下发送框未显示");
-      }
-      if (!serialChecks.sendPanelHiddenInTerminal) {
-        serialChecks.failures.push("终端模式下发送框未隐藏");
-      }
-      if (serialChecks.draftBeforeEnter !== "help") {
-        serialChecks.failures.push("终端窗口键盘输入未形成 help 草稿");
-      }
-      if (!serialChecks.statusChangedAfterEnter && !serialChecks.counterChangedAfterEnter) {
-        serialChecks.failures.push("终端 Enter 发送后没有状态或计数反馈");
-      }
+      const serialAssistantRemoved = !Array.from(document.querySelectorAll(".tool-nav-item")).some((item) =>
+        item.innerText.includes("串口助手")
+      );
 
       return {
         target: ${JSON.stringify(target)},
@@ -672,7 +574,7 @@ async function main() {
         buttonCount: document.querySelectorAll("button").length,
         buttons: [],
         clicks,
-        serialChecks,
+        serialAssistantRemoved,
         smokeErrors: window.__akiSmoke
       };
       })()
@@ -707,7 +609,7 @@ async function main() {
     const failedClicks = result.clicks.filter((item) => !item.found || (!item.disabled && item.statusBefore === item.statusAfter && !item.logChanged));
     const failures = [
       ...failedClicks.map((item) => `按钮无可见反馈: ${item.match}`),
-      ...(result.serialChecks?.failures || []),
+      ...(result.serialAssistantRemoved ? [] : ["串口助手导航仍然存在"]),
       ...result.smokeErrors.errors,
       ...result.smokeErrors.rejections,
       ...result.cdpExceptions
