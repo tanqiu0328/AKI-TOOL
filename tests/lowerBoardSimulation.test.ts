@@ -160,7 +160,7 @@ test("下板模拟会话在延迟后生成 Electron 黄金状态帧", async () =
   clock.advanceBy(10);
   await Promise.resolve();
 
-  assert.equal(frames.find((event) => event.direction === "tx")?.hex, "5A A5 02 04 BC 00 E6 06 19 01 67 41 00 00 9B");
+  assert.equal(frames.find((event) => event.direction === "tx")?.hex, "5A A5 02 04 B0 00 E6 06 0E 01 65 41 00 00 82");
 });
 
 test("下板模拟会话用可控时钟覆盖速度边界目标变化和停止降速", async () => {
@@ -447,6 +447,34 @@ test("下板模拟会话让已排队响应保留命令接收时配置", async ()
   );
 });
 
+test("下板模拟会话让已排队响应保留命令接收时速度状态", async () => {
+  const { clock, transport, session } = createTestFixture();
+  const frames: LowerBoardSimFrameEvent[] = [];
+  session.onFrame((event) => frames.push(event));
+  const runCommand = Uint8Array.from([0x5a, 0xa5, 0x02, 0x01, 0x05, 0xdc, 0x00, 0x00, 0x25]);
+  const stopCommand = Uint8Array.from([0x5a, 0xa5, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfd]);
+
+  await session.start({
+    ...defaultLowerBoardSimConfig,
+    port: "COM9",
+    speedRampRpmPerSecond: 1000,
+    responseDelayMs: 1000
+  });
+  clock.advanceBy(1000);
+  transport.receive(runCommand);
+  clock.advanceBy(500);
+  transport.receive(stopCommand);
+  clock.advanceBy(1000);
+  await Promise.resolve();
+
+  assert.deepEqual(
+    frames
+      .filter((event) => event.direction === "tx" && event.frameType === "status")
+      .map((event) => event.statusFrame?.currentSpeedRpm),
+    [1000, 500]
+  );
+});
+
 test("下板模拟会话运行时拒绝保存或应用其他串口", async () => {
   const { clock, transport, storage, session } = createTestFixture();
   let saveError = "";
@@ -600,14 +628,14 @@ test("下板模拟会话重置统计时保留排队响应半帧和运行状态",
         lastStatus: undefined
       },
       txFrames: [
-        "5A A5 02 04 EC 00 E6 06 43 01 71 41 00 00 87",
-        "5A A5 02 05 28 00 E6 06 77 01 7D 41 00 00 7A"
+        "5A A5 02 04 B0 00 E6 06 0E 01 65 41 00 00 82",
+        "5A A5 02 04 EC 00 E6 06 43 01 71 41 00 00 87"
       ],
       finalStats: {
         commandFrames: 1,
         statusFrames: 2,
         faultClearPulses: 1,
-        lastSpeed: 1320
+        lastSpeed: 1260
       }
     }
   );

@@ -1,3 +1,8 @@
+import type {
+  LowerBoardSimAdapter,
+  LowerBoardSimPortInfo
+} from "../shared/lowerBoardSimulation.js";
+
 export type EspAction = "Doctor" | "ListPorts" | "Build" | "Flash" | "Erase" | "Monitor";
 
 export type ToolId = "esp" | "lowerBoardSim";
@@ -41,17 +46,9 @@ export type ActionFinishedEvent = {
   signal: string | null;
 };
 
-export type SerialConnectionStatus = "closed" | "opening" | "open" | "closing" | "reconnecting" | "error";
+export type SerialConnectionStatus = "closed" | "opening" | "open" | "closing" | "error";
 
-export type SerialPortInfo = {
-  path: string;
-  manufacturer?: string;
-  serialNumber?: string;
-  pnpId?: string;
-  locationId?: string;
-  productId?: string;
-  vendorId?: string;
-};
+export type SerialPortInfo = LowerBoardSimPortInfo;
 
 
 export type LowerBoardSimConfig = {
@@ -135,17 +132,7 @@ export type AkiApi = {
     onActionOutput: (callback: (event: ActionOutputEvent) => void) => () => void;
     onActionFinished: (callback: (event: ActionFinishedEvent) => void) => () => void;
   };
-  lowerBoardSim: {
-    getConfig: () => Promise<LowerBoardSimConfigPayload>;
-    saveConfig: (config: LowerBoardSimConfig) => Promise<LowerBoardSimConfigPayload>;
-    listPorts: () => Promise<SerialPortInfo[]>;
-    start: (config: LowerBoardSimConfig) => Promise<LowerBoardSimStatusEvent>;
-    stop: () => Promise<LowerBoardSimStatusEvent>;
-    updateConfig: (config: LowerBoardSimConfig) => Promise<LowerBoardSimStatusEvent>;
-    resetStats: () => Promise<LowerBoardSimStatusEvent>;
-    onStatus: (callback: (event: LowerBoardSimStatusEvent) => void) => () => void;
-    onFrame: (callback: (event: LowerBoardSimFrameEvent) => void) => () => void;
-  };
+  lowerBoardSim: LowerBoardSimAdapter;
   dialog: {
     selectDirectory: () => Promise<string>;
     selectFile: (options?: {

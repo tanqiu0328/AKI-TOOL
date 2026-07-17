@@ -65,6 +65,28 @@ export type LowerBoardSimFrameEvent = {
   timestamp: number;
 };
 
+export type LowerBoardSimPortInfo = {
+  path: string;
+  manufacturer?: string;
+  serialNumber?: string;
+  pnpId?: string;
+  locationId?: string;
+  productId?: string;
+  vendorId?: string;
+};
+
+export type LowerBoardSimAdapter = {
+  getConfig: () => Promise<{ config: LowerBoardSimConfig; configPath: string }>;
+  saveConfig: (config: LowerBoardSimConfig) => Promise<{ config: LowerBoardSimConfig; configPath: string }>;
+  listPorts: () => Promise<LowerBoardSimPortInfo[]>;
+  start: (config: LowerBoardSimConfig) => Promise<LowerBoardSimStatusEvent>;
+  stop: () => Promise<LowerBoardSimStatusEvent>;
+  updateConfig: (config: LowerBoardSimConfig) => Promise<LowerBoardSimStatusEvent>;
+  resetStats: () => Promise<LowerBoardSimStatusEvent>;
+  onStatus: (callback: (event: LowerBoardSimStatusEvent) => void) => () => void;
+  onFrame: (callback: (event: LowerBoardSimFrameEvent) => void) => () => void;
+};
+
 export type LowerBoardSimulationTransportHandlers = {
   onData: (data: Uint8Array) => void;
   onError: (error: Error) => void;
@@ -400,6 +422,7 @@ export function createLowerBoardSimulationSession(
     }
 
     const configSnapshot = { ...activeConfig };
+    const statusSnapshot = buildStatus(command, configSnapshot);
     const shouldDrop =
       configSnapshot.offlineMode || dependencies.random.next() * 100 < configSnapshot.dropRatePercent;
 
@@ -422,8 +445,7 @@ export function createLowerBoardSimulationSession(
       if (connectionStatus !== "open") {
         return;
       }
-      const status = buildStatus(command, configSnapshot);
-      const response = encodeStatus(status, corruptChecksum);
+      const response = encodeStatus(statusSnapshot, corruptChecksum);
       void dependencies.transport.write(response).then(
         () => {
           if (connectionStatus !== "open") {
@@ -431,7 +453,7 @@ export function createLowerBoardSimulationSession(
           }
           stats.txBytes += response.length;
           stats.statusFrames += 1;
-          stats.lastStatus = status;
+          stats.lastStatus = statusSnapshot;
           if (corruptChecksum) {
             stats.badChecksumResponses += 1;
           }
@@ -440,7 +462,7 @@ export function createLowerBoardSimulationSession(
             frameType: "status",
             hex: bytesToHex(response),
             message: corruptChecksum ? "已发送坏校验状态帧" : "已发送状态帧",
-            statusFrame: status
+            statusFrame: statusSnapshot
           });
           emitStatus("下板模拟运行中");
         },
