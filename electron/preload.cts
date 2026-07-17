@@ -17,7 +17,7 @@ type EspConfig = {
   logDir: string;
 };
 
-type SerialConnectionStatus = "closed" | "opening" | "open" | "closing" | "reconnecting" | "error";
+type SerialConnectionStatus = "closed" | "opening" | "open" | "closing" | "error";
 
 type LowerBoardSimConfig = {
   port: string;
