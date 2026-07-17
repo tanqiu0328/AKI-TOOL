@@ -10,6 +10,8 @@
     "dev": "vite --host 127.0.0.1",
     "electron:dev": "npm-run-all --parallel dev electron:watch",
     "electron:watch": "tsc -p tsconfig.node.json --watch --preserveWatchOutput",
+    "test:typecheck": "tsc -p tsconfig.test.json",
+    "test": "npm run test:typecheck && node --test tests/lowerBoardSimulation.test.ts",
     "build": "tsc -b && vite build && tsc -p tsconfig.node.json",
     "capture:ui": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/capture-ui.ps1",
     "start": "electron .",
