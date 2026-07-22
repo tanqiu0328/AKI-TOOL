@@ -7,13 +7,13 @@ import { SerialPort } from "serialport";
 import {
   createLowerBoardSimulationSession,
   defaultLowerBoardSimConfig,
+  type LowerBoardSimAdapter,
   type LowerBoardSimConfig,
   type LowerBoardSimulationStorage
 } from "../shared/lowerBoardSimulation.js";
 import {
   createElectronLowerBoardSimAdapter,
-  createSerialPortLowerBoardSimulationTransport,
-  type ElectronLowerBoardSimAdapter
+  createSerialPortLowerBoardSimulationTransport
 } from "./lowerBoardSimAdapter.js";
 
 type EspAction = "Doctor" | "ListPorts" | "Build" | "Flash" | "Erase" | "Monitor";
@@ -42,7 +42,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let mainWindow: BrowserWindow | null = null;
 let runningAction: RunningAction | null = null;
-let lowerBoardSimAdapter: ElectronLowerBoardSimAdapter | undefined;
+let lowerBoardSimAdapter: LowerBoardSimAdapter | undefined;
 
 const defaultConfig: EspConfig = {
   chip: "esp32",

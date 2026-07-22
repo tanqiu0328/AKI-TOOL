@@ -6,8 +6,6 @@ import type {
   LowerBoardSimulationTransportHandlers
 } from "../shared/lowerBoardSimulation.js";
 
-export type ElectronSerialPortInfo = LowerBoardSimPortInfo;
-
 export type ElectronSerialPortOpenOptions = {
   path: string;
   baudRate: 4800;
@@ -124,17 +122,15 @@ export function createSerialPortLowerBoardSimulationTransport(
   };
 }
 
-export type ElectronLowerBoardSimAdapter = LowerBoardSimAdapter;
-
 export type ElectronLowerBoardSimAdapterDependencies = {
   session: LowerBoardSimulationSession;
   configPath: string;
-  listPorts: () => Promise<ElectronSerialPortInfo[]>;
+  listPorts: () => Promise<LowerBoardSimPortInfo[]>;
 };
 
 export function createElectronLowerBoardSimAdapter(
   dependencies: ElectronLowerBoardSimAdapterDependencies
-): ElectronLowerBoardSimAdapter {
+): LowerBoardSimAdapter {
   return {
     getConfig: async () => ({
       config: await dependencies.session.loadConfig(),

@@ -1,7 +1,20 @@
 import type {
   LowerBoardSimAdapter,
-  LowerBoardSimPortInfo
+  LowerBoardSimConfig
 } from "../shared/lowerBoardSimulation.js";
+
+export type {
+  LowerBoardSimCommandFrame,
+  LowerBoardSimConfig,
+  LowerBoardSimFrameEvent,
+  LowerBoardSimPortInfo,
+  LowerBoardSimStats,
+  LowerBoardSimStatusEvent,
+  LowerBoardSimStatusFrame,
+  SerialConnectionStatus
+} from "../shared/lowerBoardSimulation.js";
+
+export type { LowerBoardSimPortInfo as SerialPortInfo } from "../shared/lowerBoardSimulation.js";
 
 export type EspAction = "Doctor" | "ListPorts" | "Build" | "Flash" | "Erase" | "Monitor";
 
@@ -44,81 +57,6 @@ export type ActionFinishedEvent = {
   id: string;
   exitCode: number | null;
   signal: string | null;
-};
-
-export type SerialConnectionStatus = "closed" | "opening" | "open" | "closing" | "error";
-
-export type SerialPortInfo = LowerBoardSimPortInfo;
-
-
-export type LowerBoardSimConfig = {
-  port: string;
-  deviceType: number;
-  busVoltageV: number;
-  boardTemperatureC: number;
-  faultCode: number;
-  speedRampRpmPerSecond: number;
-  responseDelayMs: number;
-  offlineMode: boolean;
-  dropRatePercent: number;
-  badChecksumRatePercent: number;
-};
-
-export type LowerBoardSimCommandFrame = {
-  deviceType: number;
-  run: boolean;
-  targetSpeedRpm: number;
-  faultClear: boolean;
-  reserved: number;
-};
-
-export type LowerBoardSimStatusFrame = {
-  deviceType: number;
-  currentSpeedRpm: number;
-  busVoltageV: number;
-  busCurrentMa: number;
-  motorPowerW: number;
-  boardTemperatureC: number;
-  faultCode: number;
-};
-
-export type LowerBoardSimStats = {
-  rxBytes: number;
-  txBytes: number;
-  commandFrames: number;
-  statusFrames: number;
-  crcErrors: number;
-  syncErrors: number;
-  droppedResponses: number;
-  badChecksumResponses: number;
-  faultClearPulses: number;
-  lastCommand?: LowerBoardSimCommandFrame;
-  lastStatus?: LowerBoardSimStatusFrame;
-};
-
-export type LowerBoardSimStatusEvent = {
-  status: SerialConnectionStatus;
-  running: boolean;
-  message: string;
-  port: string;
-  config: LowerBoardSimConfig;
-  stats: LowerBoardSimStats;
-  timestamp: number;
-};
-
-export type LowerBoardSimFrameEvent = {
-  direction: "rx" | "tx";
-  frameType: "command" | "status" | "error";
-  hex: string;
-  message: string;
-  command?: LowerBoardSimCommandFrame;
-  statusFrame?: LowerBoardSimStatusFrame;
-  timestamp: number;
-};
-
-export type LowerBoardSimConfigPayload = {
-  config: LowerBoardSimConfig;
-  configPath: string;
 };
 
 export type AkiApi = {
