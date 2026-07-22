@@ -18,6 +18,12 @@ function createElectronEspToolAdapter(ipcRenderer: ElectronEspIpcRenderer): EspT
     listPorts: () => ipcRenderer.invoke("esp:list-ports") as ReturnType<EspToolAdapter["listPorts"]>,
     runAction: (action, config) =>
       ipcRenderer.invoke("esp:run-action", { action, config }) as ReturnType<EspToolAdapter["runAction"]>,
+    inspectCustomFlashFile: (filePath) =>
+      ipcRenderer.invoke("esp:inspect-custom-flash-file", filePath) as ReturnType<
+        EspToolAdapter["inspectCustomFlashFile"]
+      >,
+    runCustomFlash: (request) =>
+      ipcRenderer.invoke("esp:run-custom-flash", request) as ReturnType<EspToolAdapter["runCustomFlash"]>,
     stopAction: () => ipcRenderer.invoke("esp:stop-action") as ReturnType<EspToolAdapter["stopAction"]>,
     onActionOutput: (callback) => {
       const listener = (_event: unknown, payload: unknown) => callback(payload as EspActionOutputEvent);

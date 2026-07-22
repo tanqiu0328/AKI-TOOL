@@ -11,7 +11,10 @@ function createFallbackApi(): AkiApi {
     lowerBoardSim,
     dialog: {
       selectDirectory: async () => "",
-      selectFile: async () => ""
+      selectFile: async (options) =>
+        options?.filters?.some((filter) => filter.extensions.includes("bin"))
+          ? "C:\\AKI-TOOL\\preview\\factory.bin"
+          : ""
     },
     shell: {
       openPath: async () => ""

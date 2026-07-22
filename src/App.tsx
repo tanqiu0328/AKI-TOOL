@@ -21,8 +21,16 @@ import {
   Trash2
 } from "lucide-react";
 import { getAkiApi } from "./bridge";
+import { CustomFlashPanel } from "./CustomFlashPanel";
 import { LowerBoardSimulator } from "./LowerBoardSimulator";
-import type { ActionFinishedEvent, ActionOutputEvent, EspAction, EspConfig, ToolId } from "./types";
+import type {
+  ActionFinishedEvent,
+  ActionOutputEvent,
+  CustomFlashRequest,
+  EspAction,
+  EspConfig,
+  ToolId
+} from "./types";
 
 const initialConfig: EspConfig = {
   chip: "esp32",
@@ -63,13 +71,19 @@ const actionItems: Array<{
 ];
 
 type RunStateClass = "running" | "ok" | "idle" | "error";
+type EspFlashMode = "firmware" | "custom";
+type ActiveEspOperation = EspAction | "CustomFlash";
 type SetConfigField = <K extends keyof EspConfig>(key: K, value: EspConfig[K]) => void;
 
 function uniqueValues(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
-function actionLabel(action: EspAction) {
+function actionLabel(action: ActiveEspOperation) {
+  if (action === "CustomFlash") {
+    return "自定义烧录";
+  }
+
   return actionItems.find((item) => item.action === action)?.label ?? action;
 }
 
@@ -215,6 +229,7 @@ function StatusCards({
 function ConfigPanel({
   config,
   configPath,
+  flashMode,
   onChooseDirectory,
   onChooseIdfExport,
   portOptions,
@@ -222,6 +237,7 @@ function ConfigPanel({
 }: {
   config: EspConfig;
   configPath: string;
+  flashMode: EspFlashMode;
   onChooseDirectory: (key: "projectDir" | "firmwareDir") => void;
   onChooseIdfExport: () => void;
   portOptions: string[];
@@ -231,7 +247,7 @@ function ConfigPanel({
     <section className="panel config-panel">
       <div className="panel-heading">
         <div>
-          <h2>连接与固件</h2>
+          <h2>{flashMode === "firmware" ? "连接与固件" : "连接设置"}</h2>
           <p>{configPath || "配置路径待加载"}</p>
         </div>
         <Settings2 size={20} />
@@ -284,7 +300,7 @@ function ConfigPanel({
         </label>
       </div>
 
-      <div className="path-stack">
+      {flashMode === "firmware" ? <div className="path-stack">
         <label className="field path-field">
           <span>ESP-IDF export</span>
           <div className="path-control">
@@ -324,7 +340,7 @@ function ConfigPanel({
             </button>
           </div>
         </label>
-      </div>
+      </div> : null}
     </section>
   );
 }
@@ -340,7 +356,7 @@ function ActionPanel({
   toolDir,
   userDataDir
 }: {
-  activeAction: EspAction | "";
+  activeAction: ActiveEspOperation | "";
   config: EspConfig;
   isRunning: boolean;
   onOpenQuickPath: (targetPath: string, label: string) => void;
@@ -464,7 +480,7 @@ function LogPanel({
   statusText,
   terminalRef
 }: {
-  activeAction: EspAction | "";
+  activeAction: ActiveEspOperation | "";
   isRunning: boolean;
   logText: string;
   onClearLog: () => void;
@@ -477,7 +493,7 @@ function LogPanel({
       <div className="terminal-toolbar">
         <div>
           <h2>运行日志</h2>
-          <p>{isRunning ? `正在${actionLabel(activeAction as EspAction)}` : statusText}</p>
+          <p>{isRunning ? `正在${actionLabel(activeAction as ActiveEspOperation)}` : statusText}</p>
         </div>
         <div className="terminal-actions">
           <button type="button" className="icon-button" onClick={onCopyLog} title="复制日志">
@@ -508,10 +524,11 @@ function App() {
   const [userDataDir, setUserDataDir] = useState("");
   const [logText, setLogText] = useState("就绪。\n");
   const [isRunning, setIsRunning] = useState(false);
-  const [activeAction, setActiveAction] = useState<EspAction | "">("");
+  const [activeAction, setActiveAction] = useState<ActiveEspOperation | "">("");
   const [statusText, setStatusText] = useState("就绪");
   const [lastExitCode, setLastExitCode] = useState<number | null>(null);
   const [activeTool, setActiveTool] = useState<ToolId>("esp");
+  const [flashMode, setFlashMode] = useState<EspFlashMode>("firmware");
 
   const portOptions = useMemo(() => uniqueValues([config.port, ...ports]), [config.port, ports]);
 
@@ -600,6 +617,29 @@ function App() {
     }
   }
 
+  async function startEspOperation(
+    operation: ActiveEspOperation,
+    label: string,
+    initialLog: string,
+    start: () => Promise<{ id: string }>
+  ) {
+    setLogText(initialLog);
+    setLastExitCode(null);
+    stopRequestedRef.current = false;
+    setIsRunning(true);
+    setActiveAction(operation);
+    setStatusText(`正在${label}`);
+
+    try {
+      await start();
+    } catch (error) {
+      setIsRunning(false);
+      setActiveAction("");
+      setStatusText("启动失败");
+      appendLog(`启动失败: ${getErrorMessage(error)}\n`);
+    }
+  }
+
   async function runAction(action: EspAction) {
     if (actionNeedsPort(action) && !config.port) {
       setStatusText("请先选择串口");
@@ -607,22 +647,17 @@ function App() {
       return;
     }
 
-    setLogText("");
-    setLastExitCode(null);
-    stopRequestedRef.current = false;
-    setIsRunning(true);
-    setActiveAction(action);
-    setStatusText(`正在${actionLabel(action)}`);
-    appendLog(`==> ${actionLabel(action)}\n`);
+    const label = actionLabel(action);
+    await startEspOperation(action, label, `==> ${label}\n`, () => api.esp.runAction(action, config));
+  }
 
-    try {
-      await api.esp.runAction(action, config);
-    } catch (error) {
-      setIsRunning(false);
-      setActiveAction("");
-      setStatusText("启动失败");
-      appendLog(`启动失败: ${getErrorMessage(error)}\n`);
-    }
+  async function runCustomFlash(request: CustomFlashRequest) {
+    await startEspOperation(
+      "CustomFlash",
+      "自定义烧录",
+      `==> 自定义烧录\n自定义烧录项: ${request.item.name}\n`,
+      () => api.esp.runCustomFlash(request)
+    );
   }
 
   async function stopAction() {
@@ -781,27 +816,58 @@ function App() {
             statusText={statusText}
           />
 
+          <div className="flash-mode-switch" role="group" aria-label="烧录模式">
+            <button
+              type="button"
+              className={flashMode === "firmware" ? "active" : ""}
+              onClick={() => setFlashMode("firmware")}
+              disabled={isRunning}
+            >
+              固件烧录
+            </button>
+            <button
+              type="button"
+              className={flashMode === "custom" ? "active" : ""}
+              onClick={() => setFlashMode("custom")}
+              disabled={isRunning}
+            >
+              自定义烧录
+            </button>
+          </div>
+
           <div className="workspace-grid">
             <ConfigPanel
               config={config}
               configPath={configPath}
+              flashMode={flashMode}
               onChooseDirectory={(key) => void chooseDirectory(key)}
               onChooseIdfExport={() => void chooseIdfExport()}
               portOptions={portOptions}
               setField={setField}
             />
 
-            <ActionPanel
-              activeAction={activeAction}
-              config={config}
-              isRunning={isRunning}
-              onOpenQuickPath={(targetPath, label) => void openQuickPath(targetPath, label)}
-              onRunAction={(action) => void runAction(action)}
-              onStopAction={() => void stopAction()}
-              setField={setField}
-              toolDir={toolDir}
-              userDataDir={userDataDir}
-            />
+            {flashMode === "firmware" ? (
+              <ActionPanel
+                activeAction={activeAction}
+                config={config}
+                isRunning={isRunning}
+                onOpenQuickPath={(targetPath, label) => void openQuickPath(targetPath, label)}
+                onRunAction={(action) => void runAction(action)}
+                onStopAction={() => void stopAction()}
+                setField={setField}
+                toolDir={toolDir}
+                userDataDir={userDataDir}
+              />
+            ) : (
+              <CustomFlashPanel
+                api={api}
+                config={config}
+                isRunning={isRunning}
+                onRun={(request) => void runCustomFlash(request)}
+                onStatus={setStatusText}
+                onStop={() => void stopAction()}
+              />
+            )}
 
             <LogPanel
               activeAction={activeAction}

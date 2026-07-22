@@ -11,7 +11,7 @@ import {
   type LowerBoardSimConfig,
   type LowerBoardSimulationStorage
 } from "../shared/lowerBoardSimulation.js";
-import type { EspAction, EspConfig } from "../shared/espToolContract.cjs";
+import type { CustomFlashRequest, EspAction, EspConfig } from "../shared/espToolContract.cjs";
 import {
   createElectronLowerBoardSimAdapter,
   createSerialPortLowerBoardSimulationTransport
@@ -246,6 +246,74 @@ function getRunArgs(action: EspAction, config: EspConfig) {
   return args;
 }
 
+function getCustomFlashRunArgs(request: CustomFlashRequest) {
+  return [
+    "-Action",
+    "CustomFlash",
+    "-Config",
+    getUserConfigPath(),
+    "-NoPause",
+    "-Chip",
+    request.config.chip,
+    "-Port",
+    request.config.port,
+    "-Baud",
+    String(request.config.baud),
+    "-CustomFlashFile",
+    request.item.filePath,
+    "-CustomFlashAddress",
+    request.item.address,
+    "-ExpectedCustomFlashSize",
+    String(request.expectedFileSize)
+  ];
+}
+
+function inspectCustomFlashFile(filePath: string) {
+  const normalizedPath = path.resolve(String(filePath || ""));
+
+  try {
+    const stats = fs.statSync(normalizedPath);
+    return {
+      filePath: normalizedPath,
+      fileName: path.basename(normalizedPath),
+      size: stats.isFile() ? stats.size : 0,
+      exists: stats.isFile()
+    };
+  } catch {
+    return {
+      filePath: normalizedPath,
+      fileName: path.basename(normalizedPath),
+      size: 0,
+      exists: false
+    };
+  }
+}
+
+function validateCustomFlashRequest(request: CustomFlashRequest) {
+  const inspection = inspectCustomFlashFile(request.item.filePath);
+  if (!inspection.exists) {
+    throw new Error(`自定义烧录文件不存在: ${request.item.filePath}`);
+  }
+  if (inspection.size !== request.expectedFileSize) {
+    throw new Error(
+      `自定义烧录文件大小已变化: 确认时 ${request.expectedFileSize} 字节，当前 ${inspection.size} 字节`
+    );
+  }
+  if (!/^0x[0-9a-f]+$/i.test(request.item.address)) {
+    throw new Error(`自定义烧录地址无效: ${request.item.address}`);
+  }
+
+  const address = Number.parseInt(request.item.address.slice(2), 16);
+  if (!Number.isSafeInteger(address) || address % 4096 !== 0) {
+    throw new Error(`自定义烧录地址必须按 4 KiB 对齐: ${request.item.address}`);
+  }
+  if (!request.config.port) {
+    throw new Error("请先选择 ESP 串口。");
+  }
+
+  return inspection;
+}
+
 async function runListPorts() {
   const script = [
     "$OutputEncoding = [System.Text.UTF8Encoding]::new()",
@@ -415,54 +483,17 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(() => {
-  createWindow();
-
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
-  });
-});
-
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
-});
-
-ipcMain.handle("app:get-meta", () => ({
-  name: "AKI-TOOL",
-  version: app.getVersion()
-}));
-
-ipcMain.handle("esp:get-config", () => ({
-  config: readUserConfig(),
-  configPath: getUserConfigPath(),
-  toolDir: getRunnableEspToolDir(),
-  userDataDir: getUserEspDir()
-}));
-
-ipcMain.handle("esp:save-config", (_event, config: Partial<EspConfig>) => ({
-  config: writeUserConfig(config),
-  configPath: getUserConfigPath()
-}));
-
-ipcMain.handle("esp:list-ports", runListPorts);
-
-ipcMain.handle("esp:run-action", (_event, payload: { action: EspAction; config: Partial<EspConfig> }) => {
+function ensureNoRunningAction() {
   if (runningAction && !runningAction.process.killed) {
     throw new Error("已有任务正在执行。");
   }
+}
 
+function startEspProcess(args: string[]) {
   const actionId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const config = writeUserConfig(payload.config);
-  if (["Flash", "Erase", "Monitor"].includes(payload.action) && !config.port) {
-    throw new Error("请先选择 ESP 串口。");
-  }
   const toolDir = getRunnableEspToolDir();
   const scriptPath = path.join(toolDir, "esp_flash_tool.ps1");
-  const command = buildPowerShellInvocation(scriptPath, getRunArgs(payload.action, config));
+  const command = buildPowerShellInvocation(scriptPath, args);
   const child = spawnPowerShell(command, toolDir);
   runningAction = { id: actionId, process: child };
 
@@ -503,6 +534,60 @@ ipcMain.handle("esp:run-action", (_event, payload: { action: EspAction; config: 
   });
 
   return { id: actionId };
+}
+
+app.whenReady().then(() => {
+  createWindow();
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
+});
+
+ipcMain.handle("app:get-meta", () => ({
+  name: "AKI-TOOL",
+  version: app.getVersion()
+}));
+
+ipcMain.handle("esp:get-config", () => ({
+  config: readUserConfig(),
+  configPath: getUserConfigPath(),
+  toolDir: getRunnableEspToolDir(),
+  userDataDir: getUserEspDir()
+}));
+
+ipcMain.handle("esp:save-config", (_event, config: Partial<EspConfig>) => ({
+  config: writeUserConfig(config),
+  configPath: getUserConfigPath()
+}));
+
+ipcMain.handle("esp:list-ports", runListPorts);
+
+ipcMain.handle("esp:inspect-custom-flash-file", (_event, filePath: string) => inspectCustomFlashFile(filePath));
+
+ipcMain.handle("esp:run-action", (_event, payload: { action: EspAction; config: Partial<EspConfig> }) => {
+  ensureNoRunningAction();
+  const config = writeUserConfig(payload.config);
+  if (["Flash", "Erase", "Monitor"].includes(payload.action) && !config.port) {
+    throw new Error("请先选择 ESP 串口。");
+  }
+  return startEspProcess(getRunArgs(payload.action, config));
+});
+
+ipcMain.handle("esp:run-custom-flash", (_event, payload: CustomFlashRequest) => {
+  ensureNoRunningAction();
+  const config = writeUserConfig(payload.config);
+  const request = { ...payload, config };
+  validateCustomFlashRequest(request);
+  return startEspProcess(getCustomFlashRunArgs(request));
 });
 
 ipcMain.handle("esp:stop-action", async () => {

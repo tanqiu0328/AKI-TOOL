@@ -1,4 +1,5 @@
 import type {
+  CustomFlashRequest,
   EspAction,
   EspActionFinishedEvent,
   EspActionOutputEvent,
@@ -47,6 +48,10 @@ function getActionLabel(action: EspAction) {
   }
 }
 
+function getFileName(filePath: string) {
+  return filePath.split(/[\\/]/).filter(Boolean).at(-1) ?? "";
+}
+
 export function createPreviewEspToolAdapter(
   dependencies: PreviewEspToolDependencies = {
     clock: { setTimeout: (callback, delayMs) => globalThis.setTimeout(callback, delayMs) },
@@ -64,6 +69,22 @@ export function createPreviewEspToolAdapter(
 
   function emitFinished(event: EspActionFinishedEvent) {
     finishedListeners.forEach((listener) => listener(event));
+  }
+
+  function scheduleAction(id: string, lines: string[]) {
+    lines.forEach((line, index) => {
+      dependencies.clock.setTimeout(() => {
+        if (runningId === id) {
+          emitOutput({ id, stream: "stdout", text: `${line}\n` });
+        }
+      }, 120 + index * 90);
+    });
+    dependencies.clock.setTimeout(() => {
+      if (runningId === id) {
+        runningId = "";
+        emitFinished({ id, exitCode: 0, signal: null });
+      }
+    }, 1100);
   }
 
   const adapter: EspToolAdapter = {
@@ -93,19 +114,33 @@ export function createPreviewEspToolAdapter(
         "浏览器预览模式未调用本机烧录后端。"
       ];
 
-      lines.forEach((line, index) => {
-        dependencies.clock.setTimeout(() => {
-          if (runningId === id) {
-            emitOutput({ id, stream: "stdout", text: `${line}\n` });
-          }
-        }, 120 + index * 90);
-      });
-      dependencies.clock.setTimeout(() => {
-        if (runningId === id) {
-          runningId = "";
-          emitFinished({ id, exitCode: 0, signal: null });
-        }
-      }, 1100);
+      scheduleAction(id, lines);
+
+      return { id };
+    },
+    inspectCustomFlashFile: async (filePath) => ({
+      filePath,
+      fileName: getFileName(filePath),
+      size: filePath ? 4096 : 0,
+      exists: Boolean(filePath)
+    }),
+    runCustomFlash: async (request: CustomFlashRequest) => {
+      config = { ...request.config };
+      const id = dependencies.createId();
+      runningId = id;
+      const lines = [
+        "==> AKI-TOOL ESP 自定义烧录",
+        `    芯片: ${config.chip}`,
+        `    串口: ${config.port}`,
+        `    波特率: ${config.baud}`,
+        `    自定义烧录项: ${request.item.name}`,
+        `    文件: ${request.item.filePath}`,
+        `    起始地址: ${request.item.address}`,
+        "",
+        "浏览器预览模式未调用本机烧录后端。"
+      ];
+
+      scheduleAction(id, lines);
 
       return { id };
     },

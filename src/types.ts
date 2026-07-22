@@ -17,6 +17,9 @@ export type {
 
 export type { LowerBoardSimPortInfo as SerialPortInfo } from "../shared/lowerBoardSimulation.js";
 export type {
+  CustomFlashFileInspection,
+  CustomFlashItem,
+  CustomFlashRequest,
   EspAction,
   EspActionFinishedEvent as ActionFinishedEvent,
   EspActionOutputEvent as ActionOutputEvent,

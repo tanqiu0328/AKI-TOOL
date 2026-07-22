@@ -48,6 +48,27 @@ class TestEspIpcRenderer {
         this.nextId += 1;
         return { id: this.runningId };
       }
+      case "esp:inspect-custom-flash-file": {
+        const filePath = String(args[0]);
+        return {
+          filePath,
+          fileName: "device.bin",
+          size: 8192,
+          exists: true
+        };
+      }
+      case "esp:run-custom-flash": {
+        const request = args[0] as { config: EspConfig; item: { name: string; address: string } };
+        this.config = { ...request.config };
+        this.runningId = `electron-${this.nextId}`;
+        this.nextId += 1;
+        this.emit("esp:action-output", {
+          id: this.runningId,
+          stream: "stdout",
+          text: `${request.item.name} ${request.item.address}\n`
+        });
+        return { id: this.runningId };
+      }
       case "esp:stop-action": {
         const id = this.runningId;
         this.runningId = "";
@@ -108,6 +129,17 @@ defineEspToolAdapterContract(() => {
     adapter: createElectronEspToolAdapter(ipcRenderer),
     initialConfig,
     ports: ["COM9", "COM10"],
+    customFlashItem: {
+      name: "设备数据",
+      filePath: "C:\\images\\device.bin",
+      address: "0x10000"
+    },
+    customFlashInspection: {
+      filePath: "C:\\images\\device.bin",
+      fileName: "device.bin",
+      size: 8192,
+      exists: true
+    },
     completeAction: async (id) => ipcRenderer.completeAction(id)
   };
 });
