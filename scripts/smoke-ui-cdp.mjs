@@ -560,9 +560,14 @@ async function main() {
       await waitFor(() => Boolean(document.querySelector(".workspace-grid")));
 
       const clicks = [];
-      for (const match of ["刷新串口", "保存配置", "环境检查", "停止", "清空日志", "复制日志", "用户数据", "后端目录"]) {
+      const clickTargets = ${JSON.stringify(target)} === "preview"
+        ? ["刷新串口", "保存配置", "环境检查", "停止", "清空日志", "复制日志", "用户数据", "后端目录"]
+        : [];
+      for (const match of clickTargets) {
         clicks.push(await clickButton(match));
       }
+
+      const desktopMeta = window.aki ? await window.aki.getMeta() : null;
 
       const serialAssistantRemoved = !Array.from(document.querySelectorAll(".tool-nav-item")).some((item) =>
         item.innerText.includes("串口助手")
@@ -571,6 +576,7 @@ async function main() {
       return {
         target: ${JSON.stringify(target)},
         hasDesktopApi: Boolean(window.aki),
+        desktopMeta,
         buttonCount: document.querySelectorAll("button").length,
         buttons: [],
         clicks,
@@ -608,6 +614,8 @@ async function main() {
 
     const failedClicks = result.clicks.filter((item) => !item.found || (!item.disabled && item.statusBefore === item.statusAfter && !item.logChanged));
     const failures = [
+      ...(target !== "preview" && !result.hasDesktopApi ? ["桌面 API 未注入"] : []),
+      ...(target !== "preview" && result.desktopMeta?.name !== "AKI-TOOL" ? ["桌面 IPC 桥接不可用"] : []),
       ...failedClicks.map((item) => `按钮无可见反馈: ${item.match}`),
       ...(result.serialAssistantRemoved ? [] : ["串口助手导航仍然存在"]),
       ...result.smokeErrors.errors,
