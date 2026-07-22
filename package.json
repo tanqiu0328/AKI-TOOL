@@ -11,7 +11,7 @@
     "electron:dev": "npm-run-all --parallel dev electron:watch",
     "electron:watch": "tsc -p tsconfig.node.json --watch --preserveWatchOutput",
     "test:typecheck": "tsc -p tsconfig.test.json",
-    "test": "npm run test:typecheck && node --test tests/lowerBoardSimulation.test.ts tests/previewLowerBoardSim.test.ts tests/electronLowerBoardSimAdapter.test.ts tests/previewEspToolAdapter.test.ts tests/electronEspToolAdapter.test.ts tests/customFlashBackend.test.ts tests/lowerBoardSimulator.ui.test.mjs tests/customFlash.ui.test.mjs",
+    "test": "npm run test:typecheck && node --test tests/lowerBoardSimulation.test.ts tests/previewLowerBoardSim.test.ts tests/electronLowerBoardSimAdapter.test.ts tests/previewEspToolAdapter.test.ts tests/electronEspToolAdapter.test.ts tests/electronCustomFlashAdapter.test.ts tests/customFlashBackend.test.ts tests/lowerBoardSimulator.ui.test.mjs tests/customFlash.ui.test.mjs",
     "build": "tsc -b && vite build && tsc -p tsconfig.node.json",
     "capture:ui": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/capture-ui.ps1",
     "start": "electron .",

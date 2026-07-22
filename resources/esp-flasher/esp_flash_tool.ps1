@@ -16,6 +16,7 @@ param(
     [string]$CustomFlashAddress = "",
     [long]$ExpectedCustomFlashSize = -1,
     [string]$CustomFlashItemsJson = "",
+    [long]$FlashCapacityBytes = -1,
 
     [switch]$SkipBuild,
     [switch]$AutoPort,
@@ -260,6 +261,8 @@ function Get-Settings {
                     FilePath = Resolve-AbsolutePath ([string]$decodedItem.filePath)
                     Address = [string]$decodedItem.address
                     ExpectedFileSize = [long]$decodedItem.expectedFileSize
+                    ExpectedModifiedAtMs = [long](Get-ConfigProperty $decodedItem "expectedModifiedAtMs" -1)
+                    ExpectedCreatedAtMs = [long](Get-ConfigProperty $decodedItem "expectedCreatedAtMs" -1)
                 }
             }
         } catch {
@@ -271,6 +274,8 @@ function Get-Settings {
             FilePath = $customFlashFileValue
             Address = $CustomFlashAddress
             ExpectedFileSize = $ExpectedCustomFlashSize
+            ExpectedModifiedAtMs = -1
+            ExpectedCreatedAtMs = -1
         })
     }
 
@@ -293,6 +298,7 @@ function Get-Settings {
         CustomFlashAddress = $CustomFlashAddress
         ExpectedCustomFlashSize = $ExpectedCustomFlashSize
         CustomFlashItems = $customFlashItems
+        FlashCapacityBytes = $FlashCapacityBytes
         SkipBuild = [bool]$SkipBuild
         DryRun = [bool]$DryRun
         NoPause = [bool]$NoPause
@@ -740,6 +746,45 @@ function Invoke-Flash {
     }
 }
 
+function Get-PreflightFlashCapacityBytes {
+    param([object]$Settings)
+
+    if ($Settings.FlashCapacityBytes -le 0) {
+        throw "缺少 Electron 容量预检结果，禁止执行自定义烧录"
+    }
+    if ($Settings.DryRun) {
+        Write-Info "dry-run 使用可控容量探测器"
+    } else {
+        Write-Info "使用 Electron 容量预检结果"
+    }
+    return [uint64]$Settings.FlashCapacityBytes
+}
+
+function Get-FileTimestampMs {
+    param([datetime]$Value)
+
+    return [DateTimeOffset]::new($Value.ToUniversalTime()).ToUnixTimeMilliseconds()
+}
+
+function Assert-CustomFlashFilesUnchanged {
+    param([System.Collections.Generic.List[object]]$ValidatedItems)
+
+    foreach ($item in $ValidatedItems) {
+        if (-not (Test-Path -LiteralPath $item.FilePath -PathType Leaf)) {
+            throw "自定义烧录项 [$($item.Name)] 的文件不存在: $($item.FilePath)"
+        }
+        $fileInfo = Get-Item -LiteralPath $item.FilePath
+        $modifiedAtMs = Get-FileTimestampMs -Value $fileInfo.LastWriteTimeUtc
+        $createdAtMs = Get-FileTimestampMs -Value $fileInfo.CreationTimeUtc
+        if ($fileInfo.Length -ne $item.FileSize) {
+            throw "自定义烧录项 [$($item.Name)] 的文件大小已变化: 确认时 $($item.FileSize) 字节，当前 $($fileInfo.Length) 字节"
+        }
+        if (($modifiedAtMs -ne $item.ModifiedAtMs) -or ($createdAtMs -ne $item.CreatedAtMs)) {
+            throw "自定义烧录项 [$($item.Name)] 的文件在确认后已被替换或修改: $($item.FilePath)"
+        }
+    }
+}
+
 function Invoke-CustomFlash {
     param(
         [object]$Settings,
@@ -756,13 +801,21 @@ function Invoke-CustomFlash {
             -not (Test-Path -LiteralPath $item.FilePath -PathType Leaf)) {
             throw "自定义烧录项 [$($item.Name)] 的文件不存在: $($item.FilePath)"
         }
-        $currentFileSize = (Get-Item -LiteralPath $item.FilePath).Length
+        $fileInfo = Get-Item -LiteralPath $item.FilePath
+        $currentFileSize = $fileInfo.Length
         if ($currentFileSize -le 0) {
             throw "自定义烧录项 [$($item.Name)] 的文件大小必须大于 0 字节"
         }
         if (($item.ExpectedFileSize -ge 0) -and
             ($currentFileSize -ne $item.ExpectedFileSize)) {
             throw "自定义烧录项 [$($item.Name)] 的文件大小已变化: 确认时 $($item.ExpectedFileSize) 字节，当前 $currentFileSize 字节"
+        }
+        $modifiedAtMs = Get-FileTimestampMs -Value $fileInfo.LastWriteTimeUtc
+        $createdAtMs = Get-FileTimestampMs -Value $fileInfo.CreationTimeUtc
+        if (($item.ExpectedModifiedAtMs -ge 0) -and
+            (($modifiedAtMs -ne $item.ExpectedModifiedAtMs) -or
+             ($createdAtMs -ne $item.ExpectedCreatedAtMs))) {
+            throw "自定义烧录项 [$($item.Name)] 的文件在确认后已被替换或修改: $($item.FilePath)"
         }
         if ($item.Address -notmatch "^0x[0-9a-fA-F]+$") {
             throw "自定义烧录项 [$($item.Name)] 的地址无效: $($item.Address)"
@@ -779,6 +832,9 @@ function Invoke-CustomFlash {
             Address = $item.Address
             StartAddress = $addressValue
             EndAddressExclusive = $addressValue + [uint64]$currentFileSize
+            FileSize = $currentFileSize
+            ModifiedAtMs = $modifiedAtMs
+            CreatedAtMs = $createdAtMs
         })
     }
 
@@ -815,6 +871,26 @@ function Invoke-CustomFlash {
     Enter-DownloadMode -Settings $Settings
     if (-not $Settings.DryRun) {
         Assert-SerialPort -Name $ResolvedPort
+    }
+
+    Write-Step "探测实际 Flash 容量"
+    $flashCapacity = Get-PreflightFlashCapacityBytes -Settings $Settings
+    Write-Info ("实际 Flash 容量: 0x{0:x} ({1} 字节)" -f $flashCapacity, $flashCapacity)
+
+    Write-Step "写入前重新检查"
+    Assert-CustomFlashFilesUnchanged -ValidatedItems $validatedItems
+    foreach ($item in $validatedItems) {
+        if ($item.EndAddressExclusive -gt $flashCapacity) {
+            $lastAddress = $item.EndAddressExclusive - 1
+            throw (
+                "实际 Flash 容量 0x{0:x} ({1} 字节)，自定义烧录项 [{2}] 的地址范围 0x{3:x}-0x{4:x} 越界" -f `
+                $flashCapacity,
+                $flashCapacity,
+                $item.Name,
+                $item.StartAddress,
+                $lastAddress
+            )
+        }
     }
 
     Write-Step "烧录自定义烧录项"

@@ -24,14 +24,14 @@ defineEspToolAdapterContract(() => {
         filePath: "C:\\preview\\factory.bin",
         address: "0x9000",
         enabled: true,
-        expectedFileSize: 4096
+        expectedFile: { size: 4096, modifiedAtMs: 1000, createdAtMs: 500 }
       },
       {
         name: "设备配置",
         filePath: "C:\\preview\\config.bin",
         address: "0xa000",
         enabled: true,
-        expectedFileSize: 4096
+        expectedFile: { size: 4096, modifiedAtMs: 1000, createdAtMs: 500 }
       }
     ],
     customFlashInspections: [
@@ -39,13 +39,17 @@ defineEspToolAdapterContract(() => {
         filePath: "C:\\preview\\factory.bin",
         fileName: "factory.bin",
         size: 4096,
-        exists: true
+        exists: true,
+        modifiedAtMs: 1000,
+        createdAtMs: 500
       },
       {
         filePath: "C:\\preview\\config.bin",
         fileName: "config.bin",
         size: 4096,
-        exists: true
+        exists: true,
+        modifiedAtMs: 1000,
+        createdAtMs: 500
       }
     ],
     completeAction: async () => harness.advanceBy(2000)

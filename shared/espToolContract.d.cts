@@ -42,8 +42,14 @@ export type CustomFlashItem = {
   enabled: boolean;
 };
 
+export type CustomFlashFileSnapshot = {
+  size: number;
+  modifiedAtMs: number;
+  createdAtMs: number;
+};
+
 export type CustomFlashRequestItem = CustomFlashItem & {
-  expectedFileSize: number;
+  expectedFile: CustomFlashFileSnapshot;
 };
 
 export type CustomFlashPlanFileSource =
@@ -64,10 +70,9 @@ export type CustomFlashPlan = {
   items: CustomFlashPlanItem[];
 };
 
-export type CustomFlashFileInspection = {
+export type CustomFlashFileInspection = CustomFlashFileSnapshot & {
   filePath: string;
   fileName: string;
-  size: number;
   exists: boolean;
 };
 

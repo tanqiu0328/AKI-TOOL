@@ -87,14 +87,14 @@ export function defineEspToolAdapterContract(createFixture: () => EspToolAdapter
           filePath: plan.items[0].fileSource.kind === "fixed" ? plan.items[0].fileSource.filePath : "",
           address: plan.items[0].address,
           enabled: false,
-          expectedFileSize: 4096
+          expectedFile: { size: 4096, modifiedAtMs: 1000, createdAtMs: 500 }
         },
         {
           name: plan.items[1].name,
           filePath: "C:\\runtime\\chosen.bin",
           address: plan.items[1].address,
           enabled: true,
-          expectedFileSize: 4096
+          expectedFile: { size: 4096, modifiedAtMs: 1000, createdAtMs: 500 }
         }
       ]
     });
@@ -244,7 +244,10 @@ export function defineEspToolAdapterContract(createFixture: () => EspToolAdapter
     await assert.rejects(
       fixture.adapter.runCustomFlash({
         config: fixture.initialConfig,
-        items: [{ ...fixture.customFlashItems[0], expectedFileSize: 0 }]
+        items: [{
+          ...fixture.customFlashItems[0],
+          expectedFile: { ...fixture.customFlashItems[0].expectedFile, size: 0 }
+        }]
       }),
       /文件大小必须大于 0 字节/
     );

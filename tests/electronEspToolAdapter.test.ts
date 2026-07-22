@@ -62,7 +62,9 @@ class TestEspIpcRenderer {
           filePath,
           fileName: "device.bin",
           size: 8192,
-          exists: true
+          exists: true,
+          modifiedAtMs: 1000,
+          createdAtMs: 500
         };
       }
       case "esp:list-custom-flash-plans":
@@ -159,14 +161,14 @@ defineEspToolAdapterContract(() => {
         filePath: "C:\\images\\device.bin",
         address: "0x10000",
         enabled: true,
-        expectedFileSize: 8192
+        expectedFile: { size: 8192, modifiedAtMs: 1000, createdAtMs: 500 }
       },
       {
         name: "校准数据",
         filePath: "C:\\images\\calibration.bin",
         address: "0x12000",
         enabled: true,
-        expectedFileSize: 4096
+        expectedFile: { size: 4096, modifiedAtMs: 1000, createdAtMs: 500 }
       }
     ],
     customFlashInspections: [
@@ -174,13 +176,17 @@ defineEspToolAdapterContract(() => {
         filePath: "C:\\images\\device.bin",
         fileName: "device.bin",
         size: 8192,
-        exists: true
+        exists: true,
+        modifiedAtMs: 1000,
+        createdAtMs: 500
       },
       {
         filePath: "C:\\images\\calibration.bin",
         fileName: "device.bin",
         size: 8192,
-        exists: true
+        exists: true,
+        modifiedAtMs: 1000,
+        createdAtMs: 500
       }
     ],
     completeAction: async (id) => ipcRenderer.completeAction(id)

@@ -377,7 +377,11 @@ export function CustomFlashPanel({
         filePath: inspections[index].filePath,
         address: item.address,
         enabled: true,
-        expectedFileSize: inspections[index].size
+        expectedFile: {
+          size: inspections[index].size,
+          modifiedAtMs: inspections[index].modifiedAtMs,
+          createdAtMs: inspections[index].createdAtMs
+        }
       }));
       const validatedItems = validateCustomFlashItems(requestItems);
       const nextInspections = new Map(enabledItems.map((item, index) => [item.id, inspections[index]]));

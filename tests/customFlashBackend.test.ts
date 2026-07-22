@@ -9,6 +9,53 @@ import { fileURLToPath } from "node:url";
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const scriptPath = path.join(repositoryRoot, "resources", "esp-flasher", "esp_flash_tool.ps1");
 
+test("本机后端 dry-run 在容量预检和文件复核后才提交 write_flash", () => {
+  const temporaryDir = fs.mkdtempSync(path.join(os.tmpdir(), "aki-custom-flash-capacity-"));
+  const imagePath = path.join(temporaryDir, "factory.bin");
+  fs.writeFileSync(imagePath, Buffer.alloc(4096));
+
+  try {
+    const output = execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        scriptPath,
+        "-Action",
+        "CustomFlash",
+        "-Port",
+        "COM9",
+        "-Chip",
+        "esp32s3",
+        "-Baud",
+        "460800",
+        "-CustomFlashItemsJson",
+        JSON.stringify([
+          { name: "出厂数据", filePath: imagePath, address: "0x10000", expectedFileSize: 4096 }
+        ]),
+        "-FlashCapacityBytes",
+        String(4 * 1024 * 1024),
+        "-DryRun",
+        "-NoPause"
+      ],
+      { cwd: repositoryRoot, encoding: "utf8" }
+    );
+
+    const capacityIndex = output.indexOf("探测实际 Flash 容量");
+    const recheckIndex = output.indexOf("写入前重新检查");
+    const writeIndex = output.indexOf("write_flash");
+    assert.ok(capacityIndex >= 0);
+    assert.ok(recheckIndex > capacityIndex);
+    assert.ok(writeIndex > recheckIndex);
+    assert.match(output, /实际 Flash 容量: 0x400000.*4194304 字节/);
+    assert.equal(output.match(/write_flash/g)?.length, 1);
+  } finally {
+    fs.rmSync(temporaryDir, { recursive: true, force: true });
+  }
+});
+
 test("本机后端 dry-run 通过一次命令批量提交地址与文件配对", () => {
   const temporaryDir = fs.mkdtempSync(path.join(os.tmpdir(), "aki-custom-flash-"));
   const factoryImagePath = path.join(temporaryDir, "factory data.bin");
@@ -39,6 +86,8 @@ test("本机后端 dry-run 通过一次命令批量提交地址与文件配对",
         "460800",
         "-CustomFlashItemsJson",
         itemsJson,
+        "-FlashCapacityBytes",
+        String(4 * 1024 * 1024),
         "-DryRun",
         "-NoPause"
       ],

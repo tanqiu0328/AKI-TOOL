@@ -12,6 +12,11 @@ import {
   type LowerBoardSimulationStorage
 } from "../shared/lowerBoardSimulation.js";
 import {
+  createElectronCustomFlashAdapter,
+  type CustomFlashFileMetadata,
+  type CustomFlashPreflight
+} from "./customFlashAdapter.js";
+import {
   removeCustomFlashPlan,
   upsertCustomFlashPlan,
   validateCustomFlashItems,
@@ -33,6 +38,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let mainWindow: BrowserWindow | null = null;
 let runningAction: RunningAction | null = null;
 let lowerBoardSimAdapter: LowerBoardSimAdapter | undefined;
+let customFlashPreflightRunning = false;
 
 const defaultConfig: EspConfig = {
   chip: "esp32",
@@ -292,7 +298,7 @@ function getRunArgs(action: EspAction, config: EspConfig) {
   return args;
 }
 
-function getCustomFlashRunArgs(request: CustomFlashRequest) {
+function getCustomFlashRunArgs(request: CustomFlashRequest, preflight: CustomFlashPreflight) {
   const items = validateCustomFlashItems(request.items);
   return [
     "-Action",
@@ -306,50 +312,55 @@ function getCustomFlashRunArgs(request: CustomFlashRequest) {
     request.config.port,
     "-Baud",
     String(request.config.baud),
+    "-FlashCapacityBytes",
+    String(preflight.flashCapacityBytes),
     "-CustomFlashItemsJson",
-    JSON.stringify(items.map(({ name, filePath, address, expectedFileSize }) => ({
+    JSON.stringify(items.map(({
       name,
       filePath,
       address,
-      expectedFileSize
+      expectedFile
+    }) => ({
+      name,
+      filePath,
+      address,
+      expectedFileSize: expectedFile.size,
+      expectedModifiedAtMs: expectedFile.modifiedAtMs,
+      expectedCreatedAtMs: expectedFile.createdAtMs
     })))
   ];
 }
 
-function inspectCustomFlashFile(filePath: string) {
+function inspectCustomFlashFileMetadata(filePath: string): CustomFlashFileMetadata {
   const normalizedPath = path.resolve(String(filePath || ""));
 
   try {
     const stats = fs.statSync(normalizedPath);
     return {
       filePath: normalizedPath,
-      fileName: path.basename(normalizedPath),
       size: stats.isFile() ? stats.size : 0,
-      exists: stats.isFile()
+      exists: stats.isFile(),
+      modifiedAtMs: Math.trunc(stats.mtimeMs),
+      createdAtMs: Math.trunc(stats.birthtimeMs)
     };
   } catch {
     return {
       filePath: normalizedPath,
-      fileName: path.basename(normalizedPath),
       size: 0,
-      exists: false
+      exists: false,
+      modifiedAtMs: 0,
+      createdAtMs: 0
     };
   }
 }
 
+function inspectCustomFlashFile(filePath: string) {
+  const metadata = inspectCustomFlashFileMetadata(filePath);
+  return { ...metadata, fileName: path.basename(metadata.filePath) };
+}
+
 function validateCustomFlashRequest(request: CustomFlashRequest) {
-  const items = validateCustomFlashItems(request.items);
-  for (const item of items) {
-    const inspection = inspectCustomFlashFile(item.filePath);
-    if (!inspection.exists) {
-      throw new Error(`自定义烧录项“${item.name}”的文件不存在: ${item.filePath}`);
-    }
-    if (inspection.size !== item.expectedFileSize) {
-      throw new Error(
-        `自定义烧录项“${item.name}”的文件大小已变化: 确认时 ${item.expectedFileSize} 字节，当前 ${inspection.size} 字节`
-      );
-    }
-  }
+  validateCustomFlashItems(request.items);
   if (!request.config.port) {
     throw new Error("请先选择 ESP 串口。");
   }
@@ -381,6 +392,93 @@ async function runListPorts() {
     });
 
     child.on("error", () => resolve([]));
+  });
+}
+
+function parseFlashCapacity(output: string) {
+  const match = /(?:detected\s+flash\s+size|flash\s+size)\s*:\s*(\d+(?:\.\d+)?)\s*([kmg]b)/i.exec(output);
+  if (!match) {
+    throw new Error(`esptool 输出中没有 Flash 容量: ${output.trim().slice(-800) || "无输出"}`);
+  }
+
+  const unitScale: Record<string, number> = {
+    KB: 1024,
+    MB: 1024 * 1024,
+    GB: 1024 * 1024 * 1024
+  };
+  const capacity = Number(match[1]) * unitScale[match[2].toUpperCase()];
+  if (!Number.isSafeInteger(capacity) || capacity <= 0) {
+    throw new Error(`esptool 返回了无效的 Flash 容量: ${match[0]}`);
+  }
+  return capacity;
+}
+
+function probeFlashCapacity(config: EspConfig) {
+  if (!/^esp[a-z0-9]+$/.test(config.chip)) {
+    throw new Error(`芯片型号无效: ${config.chip}`);
+  }
+  if (!/^COM\d+$/i.test(config.port)) {
+    throw new Error(`串口名称无效: ${config.port}`);
+  }
+  if (!Number.isSafeInteger(config.baud) || config.baud < 9600 || config.baud > 2000000) {
+    throw new Error(`烧录波特率无效: ${config.baud}`);
+  }
+
+  const before = config.manualDownloadMode ? "no_reset" : "default_reset";
+  const esptoolTokens = [
+    "python",
+    "-m",
+    "esptool",
+    "--chip",
+    config.chip,
+    "-p",
+    config.port,
+    "-b",
+    String(config.baud),
+    "--before",
+    before,
+    "--after",
+    "no_reset",
+    "flash_id"
+  ];
+  const directCommand = `& ${esptoolTokens.map(quotePowerShellString).join(" ")}`;
+  const commandLine = esptoolTokens.map((token) => `"${token.replace(/"/g, '""')}"`).join(" ");
+  const probeCommand = config.idfExport && fs.existsSync(config.idfExport)
+    ? `& cmd.exe /d /c ${quotePowerShellString(`call "${config.idfExport.replace(/"/g, '""')}" >nul && ${commandLine}`)}`
+    : directCommand;
+  const command = [
+    "$OutputEncoding = [System.Text.UTF8Encoding]::new()",
+    "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()",
+    probeCommand
+  ].join("; ");
+
+  return new Promise<number>((resolve, reject) => {
+    const child = spawnPowerShell(command, getRunnableEspToolDir());
+    let output = "";
+    let settled = false;
+    const collectOutput = (chunk: Buffer) => {
+      output += chunk.toString("utf8");
+    };
+    child.stdout.on("data", collectOutput);
+    child.stderr.on("data", collectOutput);
+    child.on("error", (error) => {
+      settled = true;
+      reject(error);
+    });
+    child.on("close", (exitCode) => {
+      if (settled) {
+        return;
+      }
+      if (exitCode !== 0) {
+        reject(new Error(output.trim().slice(-1200) || `esptool 退出码 ${exitCode}`));
+        return;
+      }
+      try {
+        resolve(parseFlashCapacity(output));
+      } catch (error) {
+        reject(error);
+      }
+    });
   });
 }
 
@@ -525,7 +623,7 @@ function createWindow() {
 }
 
 function ensureNoRunningAction() {
-  if (runningAction && !runningAction.process.killed) {
+  if (customFlashPreflightRunning || (runningAction && !runningAction.process.killed)) {
     throw new Error("已有任务正在执行。");
   }
 }
@@ -620,6 +718,12 @@ ipcMain.handle("esp:save-custom-flash-plan", (_event, plan: CustomFlashPlan) => 
 
 ipcMain.handle("esp:delete-custom-flash-plan", (_event, planId: string) => deleteCustomFlashPlan(planId));
 
+const electronCustomFlashAdapter = createElectronCustomFlashAdapter({
+  inspectFile: inspectCustomFlashFileMetadata,
+  probeFlashCapacity,
+  startWrite: (request, preflight) => startEspProcess(getCustomFlashRunArgs(request, preflight))
+});
+
 ipcMain.handle("esp:run-action", (_event, payload: { action: EspAction; config: Partial<EspConfig> }) => {
   ensureNoRunningAction();
   const config = writeUserConfig(payload.config);
@@ -629,12 +733,17 @@ ipcMain.handle("esp:run-action", (_event, payload: { action: EspAction; config: 
   return startEspProcess(getRunArgs(payload.action, config));
 });
 
-ipcMain.handle("esp:run-custom-flash", (_event, payload: CustomFlashRequest) => {
+ipcMain.handle("esp:run-custom-flash", async (_event, payload: CustomFlashRequest) => {
   ensureNoRunningAction();
   const config = writeUserConfig(payload.config);
   const request = { ...payload, config };
   validateCustomFlashRequest(request);
-  return startEspProcess(getCustomFlashRunArgs(request));
+  customFlashPreflightRunning = true;
+  try {
+    return await electronCustomFlashAdapter.runCustomFlash(request);
+  } finally {
+    customFlashPreflightRunning = false;
+  }
 });
 
 ipcMain.handle("esp:stop-action", async () => {

@@ -130,7 +130,9 @@ export function createPreviewEspToolAdapter(
       filePath,
       fileName: getFileName(filePath),
       size: filePath ? 4096 : 0,
-      exists: Boolean(filePath)
+      exists: Boolean(filePath),
+      modifiedAtMs: filePath ? 1000 : 0,
+      createdAtMs: filePath ? 500 : 0
     }),
     listCustomFlashPlans: async () => structuredClone(customFlashPlans),
     saveCustomFlashPlan: async (plan) => {

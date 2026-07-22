@@ -41,12 +41,12 @@ export function validateCustomFlashItems(items: CustomFlashRequestItem[]): Valid
     if (!parsedAddress.valid) {
       throw new Error(`自定义烧录项“${item.name}”的地址必须按 4 KiB 对齐: ${item.address}`);
     }
-    if (item.expectedFileSize <= 0) {
+    if (item.expectedFile.size <= 0) {
       throw new Error(`自定义烧录项“${item.name}”的文件大小必须大于 0 字节`);
     }
 
     const startAddress = parsedAddress.value;
-    const endAddressExclusive = startAddress + item.expectedFileSize;
+    const endAddressExclusive = startAddress + item.expectedFile.size;
     if (!Number.isSafeInteger(endAddressExclusive)) {
       throw new Error(`自定义烧录项“${item.name}”的文件大小或地址范围无效`);
     }
