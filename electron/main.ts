@@ -11,27 +11,11 @@ import {
   type LowerBoardSimConfig,
   type LowerBoardSimulationStorage
 } from "../shared/lowerBoardSimulation.js";
+import type { EspAction, EspConfig } from "../shared/espToolContract.cjs";
 import {
   createElectronLowerBoardSimAdapter,
   createSerialPortLowerBoardSimulationTransport
 } from "./lowerBoardSimAdapter.js";
-
-type EspAction = "Doctor" | "ListPorts" | "Build" | "Flash" | "Erase" | "Monitor";
-
-type EspConfig = {
-  chip: string;
-  port: string;
-  baud: number;
-  monitorBaud: number;
-  idfExport: string;
-  projectDir: string;
-  firmwareDir: string;
-  skipBuildOnFlash: boolean;
-  autoPort: boolean;
-  manualDownloadMode: boolean;
-  openMonitorAfterFlash: boolean;
-  logDir: string;
-};
 
 type RunningAction = {
   id: string;
