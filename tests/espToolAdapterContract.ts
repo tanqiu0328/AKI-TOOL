@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type {
   CustomFlashFileInspection,
+  CustomFlashPlan,
   CustomFlashRequestItem,
   EspActionFinishedEvent,
   EspActionOutputEvent,
@@ -19,6 +20,110 @@ export type EspToolAdapterFixture = {
 };
 
 export function defineEspToolAdapterContract(createFixture: () => EspToolAdapterFixture) {
+  test("ESP 工具适配器契约仅在显式保存时持久化自定义烧录方案", async () => {
+    const fixture = createFixture();
+    const plan: CustomFlashPlan = {
+      id: "factory-plan",
+      name: "出厂烧录",
+      items: [
+        {
+          id: "factory-data",
+          name: "出厂数据",
+          address: "0x10000",
+          defaultEnabled: true,
+          fileSource: { kind: "fixed", filePath: "C:\\images\\factory.bin" }
+        }
+      ]
+    };
+
+    await fixture.adapter.saveCustomFlashPlan(plan);
+    assert.deepEqual(await fixture.adapter.listCustomFlashPlans(), [plan]);
+
+    const unsavedDraft = { ...plan, name: "尚未保存的名称" };
+    assert.deepEqual(await fixture.adapter.listCustomFlashPlans(), [plan]);
+
+    await fixture.adapter.saveCustomFlashPlan(unsavedDraft);
+    assert.deepEqual(await fixture.adapter.listCustomFlashPlans(), [unsavedDraft]);
+
+    const copiedPlan = { ...unsavedDraft, id: "factory-plan-copy", name: "出厂烧录副本" };
+    await fixture.adapter.saveCustomFlashPlan(copiedPlan);
+    assert.deepEqual(await fixture.adapter.listCustomFlashPlans(), [unsavedDraft, copiedPlan]);
+
+    await fixture.adapter.deleteCustomFlashPlan(plan.id);
+    assert.deepEqual(await fixture.adapter.listCustomFlashPlans(), [copiedPlan]);
+  });
+
+  test("ESP 工具适配器契约隔离方案默认值与本次执行选择", async () => {
+    const fixture = createFixture();
+    const plan: CustomFlashPlan = {
+      id: "mixed-source-plan",
+      name: "混合来源方案",
+      items: [
+        {
+          id: "fixed-item",
+          name: "固定文件",
+          address: "0x10000",
+          defaultEnabled: true,
+          fileSource: { kind: "fixed", filePath: "C:\\images\\fixed.bin" }
+        },
+        {
+          id: "prompt-item",
+          name: "每次选择文件",
+          address: "0x12000",
+          defaultEnabled: false,
+          fileSource: { kind: "prompt" }
+        }
+      ]
+    };
+    await fixture.adapter.saveCustomFlashPlan(plan);
+
+    const outputEvents: EspActionOutputEvent[] = [];
+    fixture.adapter.onActionOutput((event) => outputEvents.push(event));
+    const action = await fixture.adapter.runCustomFlash({
+      config: fixture.initialConfig,
+      items: [
+        {
+          name: plan.items[0].name,
+          filePath: plan.items[0].fileSource.kind === "fixed" ? plan.items[0].fileSource.filePath : "",
+          address: plan.items[0].address,
+          enabled: false,
+          expectedFileSize: 4096
+        },
+        {
+          name: plan.items[1].name,
+          filePath: "C:\\runtime\\chosen.bin",
+          address: plan.items[1].address,
+          enabled: true,
+          expectedFileSize: 4096
+        }
+      ]
+    });
+    await fixture.completeAction(action.id);
+
+    assert.ok(outputEvents.some((event) => event.text.includes("每次选择文件")));
+    assert.ok(outputEvents.every((event) => !event.text.includes("固定文件")));
+    assert.deepEqual(await fixture.adapter.listCustomFlashPlans(), [plan]);
+  });
+
+  test("ESP 工具适配器契约拒绝保存使用相对路径的固定文件来源", async () => {
+    const fixture = createFixture();
+    const plan: CustomFlashPlan = {
+      id: "relative-source-plan",
+      name: "无效方案",
+      items: [
+        {
+          id: "relative-item",
+          name: "相对路径文件",
+          address: "0x10000",
+          defaultEnabled: true,
+          fileSource: { kind: "fixed", filePath: "images\\factory.bin" }
+        }
+      ]
+    };
+
+    await assert.rejects(fixture.adapter.saveCustomFlashPlan(plan), /绝对路径/);
+  });
+
   test("ESP 工具适配器契约统一配置持久化与串口列表", async () => {
     const fixture = createFixture();
     const initial = await fixture.adapter.getConfig();

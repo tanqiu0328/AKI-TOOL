@@ -1,4 +1,4 @@
-import type { CustomFlashRequestItem } from "./espToolContract.cjs";
+import type { CustomFlashPlan, CustomFlashRequestItem } from "./espToolContract.cjs";
 
 export type ValidatedCustomFlashItem = CustomFlashRequestItem & {
   startAddress: number;
@@ -66,4 +66,76 @@ export function validateCustomFlashItems(items: CustomFlashRequestItem[]): Valid
   }
 
   return validatedItems;
+}
+
+function isAbsoluteFilePath(filePath: string) {
+  return /^(?:[a-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+|\/)/i.test(filePath);
+}
+
+export function validateCustomFlashPlan(plan: CustomFlashPlan): CustomFlashPlan {
+  const id = String(plan.id || "").trim();
+  const name = String(plan.name || "").trim();
+  if (!id) {
+    throw new Error("自定义烧录方案缺少标识");
+  }
+  if (!name) {
+    throw new Error("请为自定义烧录方案命名");
+  }
+  if (!Array.isArray(plan.items) || plan.items.length === 0) {
+    throw new Error("自定义烧录方案至少需要一个烧录项");
+  }
+
+  const itemIds = new Set<string>();
+  const normalizedItems = plan.items.map((item) => {
+    const itemId = String(item.id || "").trim();
+    const itemName = String(item.name || "").trim();
+    if (!itemId || itemIds.has(itemId)) {
+      throw new Error("自定义烧录项标识缺失或重复");
+    }
+    itemIds.add(itemId);
+    if (!itemName) {
+      throw new Error("自定义烧录项名称不能为空");
+    }
+    if (!parseCustomFlashAddress(item.address).valid) {
+      throw new Error(`自定义烧录项“${itemName}”的地址无效: ${item.address}`);
+    }
+
+    if (item.fileSource.kind === "fixed") {
+      const filePath = String(item.fileSource.filePath || "").trim();
+      if (!isAbsoluteFilePath(filePath)) {
+        throw new Error(`自定义烧录项“${itemName}”的固定文件必须使用绝对路径`);
+      }
+      return {
+        id: itemId,
+        name: itemName,
+        address: item.address,
+        defaultEnabled: Boolean(item.defaultEnabled),
+        fileSource: { kind: "fixed" as const, filePath }
+      };
+    }
+
+    return {
+      id: itemId,
+      name: itemName,
+      address: item.address,
+      defaultEnabled: Boolean(item.defaultEnabled),
+      fileSource: { kind: "prompt" as const }
+    };
+  });
+
+  return { id, name, items: normalizedItems };
+}
+
+export function upsertCustomFlashPlan(plans: CustomFlashPlan[], plan: CustomFlashPlan) {
+  const savedPlan = validateCustomFlashPlan(plan);
+  const existingIndex = plans.findIndex((candidate) => candidate.id === savedPlan.id);
+  const nextPlans = existingIndex >= 0
+    ? plans.map((candidate, index) => (index === existingIndex ? savedPlan : candidate))
+    : [...plans, savedPlan];
+  return { plans: nextPlans, savedPlan };
+}
+
+export function removeCustomFlashPlan(plans: CustomFlashPlan[], planId: string) {
+  const nextPlans = plans.filter((plan) => plan.id !== planId);
+  return { plans: nextPlans, deleted: nextPlans.length !== plans.length };
 }

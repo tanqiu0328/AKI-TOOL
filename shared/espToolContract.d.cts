@@ -46,6 +46,24 @@ export type CustomFlashRequestItem = CustomFlashItem & {
   expectedFileSize: number;
 };
 
+export type CustomFlashPlanFileSource =
+  | { kind: "fixed"; filePath: string }
+  | { kind: "prompt" };
+
+export type CustomFlashPlanItem = {
+  id: string;
+  name: string;
+  address: string;
+  defaultEnabled: boolean;
+  fileSource: CustomFlashPlanFileSource;
+};
+
+export type CustomFlashPlan = {
+  id: string;
+  name: string;
+  items: CustomFlashPlanItem[];
+};
+
 export type CustomFlashFileInspection = {
   filePath: string;
   fileName: string;
@@ -64,6 +82,9 @@ export type EspToolAdapter = {
   listPorts: () => Promise<string[]>;
   runAction: (action: EspAction, config: EspConfig) => Promise<{ id: string }>;
   inspectCustomFlashFile: (filePath: string) => Promise<CustomFlashFileInspection>;
+  listCustomFlashPlans: () => Promise<CustomFlashPlan[]>;
+  saveCustomFlashPlan: (plan: CustomFlashPlan) => Promise<CustomFlashPlan>;
+  deleteCustomFlashPlan: (planId: string) => Promise<boolean>;
   runCustomFlash: (request: CustomFlashRequest) => Promise<{ id: string }>;
   stopAction: () => Promise<boolean>;
   onActionOutput: (callback: (event: EspActionOutputEvent) => void) => () => void;

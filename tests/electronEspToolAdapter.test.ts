@@ -1,11 +1,16 @@
 import { createRequire } from "node:module";
 import type {
+  CustomFlashPlan,
   CustomFlashRequestItem,
   EspConfig,
   EspConfigPayload,
   EspToolAdapter
 } from "../shared/espToolContract.d.cts";
-import { validateCustomFlashItems } from "../shared/customFlash.ts";
+import {
+  removeCustomFlashPlan,
+  upsertCustomFlashPlan,
+  validateCustomFlashItems
+} from "../shared/customFlash.ts";
 import { defineEspToolAdapterContract } from "./espToolAdapterContract.ts";
 
 const require = createRequire(import.meta.url);
@@ -27,6 +32,7 @@ const initialConfig: EspConfig = {
 
 class TestEspIpcRenderer {
   private config = { ...initialConfig };
+  private customFlashPlans: CustomFlashPlan[] = [];
   private runningId = "";
   private nextId = 1;
   private listeners = new Map<string, Set<(event: unknown, payload: unknown) => void>>();
@@ -58,6 +64,18 @@ class TestEspIpcRenderer {
           size: 8192,
           exists: true
         };
+      }
+      case "esp:list-custom-flash-plans":
+        return structuredClone(this.customFlashPlans);
+      case "esp:save-custom-flash-plan": {
+        const result = upsertCustomFlashPlan(this.customFlashPlans, args[0] as CustomFlashPlan);
+        this.customFlashPlans = result.plans;
+        return structuredClone(result.savedPlan);
+      }
+      case "esp:delete-custom-flash-plan": {
+        const result = removeCustomFlashPlan(this.customFlashPlans, String(args[0]));
+        this.customFlashPlans = result.plans;
+        return result.deleted;
       }
       case "esp:run-custom-flash": {
         const request = args[0] as {

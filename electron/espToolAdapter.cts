@@ -22,6 +22,14 @@ function createElectronEspToolAdapter(ipcRenderer: ElectronEspIpcRenderer): EspT
       ipcRenderer.invoke("esp:inspect-custom-flash-file", filePath) as ReturnType<
         EspToolAdapter["inspectCustomFlashFile"]
       >,
+    listCustomFlashPlans: () =>
+      ipcRenderer.invoke("esp:list-custom-flash-plans") as ReturnType<EspToolAdapter["listCustomFlashPlans"]>,
+    saveCustomFlashPlan: (plan) =>
+      ipcRenderer.invoke("esp:save-custom-flash-plan", plan) as ReturnType<EspToolAdapter["saveCustomFlashPlan"]>,
+    deleteCustomFlashPlan: (planId) =>
+      ipcRenderer.invoke("esp:delete-custom-flash-plan", planId) as ReturnType<
+        EspToolAdapter["deleteCustomFlashPlan"]
+      >,
     runCustomFlash: (request) =>
       ipcRenderer.invoke("esp:run-custom-flash", {
         ...request,

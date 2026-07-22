@@ -13,6 +13,12 @@ function setInputValue(window, input, value) {
   input.dispatchEvent(new window.Event("input", { bubbles: true }));
 }
 
+function setSelectValue(window, select, value) {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value")?.set;
+  setter?.call(select, value);
+  select.dispatchEvent(new window.Event("change", { bubbles: true }));
+}
+
 async function waitFor(assertion, act, timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs;
   let lastError;
@@ -77,6 +83,10 @@ test("浏览器预览可编辑并批量执行多个自定义烧录项", async (c
   const customModeButton = buttonByText(window.document, "自定义烧录");
   assert.ok(customModeButton);
   await act(async () => customModeButton.click());
+
+  const planNameInput = window.document.querySelector('input[aria-label="方案名称"]');
+  assert.ok(planNameInput);
+  await act(async () => setInputValue(window, planNameInput, "量产方案"));
 
   const confirmPreviewButton = buttonByText(window.document, "查看确认摘要");
   assert.ok(confirmPreviewButton);
@@ -160,14 +170,56 @@ test("浏览器预览可编辑并批量执行多个自定义烧录项", async (c
   await act(async () => enabledInputs[0].click());
   await act(async () => confirmPreviewButton.click());
 
+  const savePlanButton = buttonByText(window.document, "保存方案");
+  assert.ok(savePlanButton);
+  await act(async () => savePlanButton.click());
+  await waitFor(() => assert.match(window.document.body.textContent ?? "", /方案已保存/), act);
+
+  const newPlanButton = buttonByText(window.document, "新建方案");
+  assert.ok(newPlanButton);
+  await act(async () => newPlanButton.click());
+  const nextPlanNameInput = window.document.querySelector('input[aria-label="方案名称"]');
+  assert.ok(nextPlanNameInput);
+  await act(async () => setInputValue(window, nextPlanNameInput, "每次选择方案"));
+
+  const fileSourceSelect = window.document.querySelector('select[aria-label="烧录项 1 文件来源"]');
+  assert.ok(fileSourceSelect);
+  await act(async () => setSelectValue(window, fileSourceSelect, "prompt"));
+  await act(async () => savePlanButton.click());
+  await waitFor(() => assert.match(window.document.body.textContent ?? "", /方案已保存/), act);
+
+  const planSelect = window.document.querySelector('select[aria-label="自定义烧录方案"]');
+  assert.ok(planSelect);
+  const productionOption = Array.from(planSelect.options).find((option) => option.textContent === "量产方案");
+  const promptOption = Array.from(planSelect.options).find((option) => option.textContent === "每次选择方案");
+  assert.ok(productionOption);
+  assert.ok(promptOption);
+  await act(async () => setSelectValue(window, planSelect, productionOption.value));
+  assert.equal(window.document.querySelectorAll(".custom-flash-item").length, 2);
+  const temporaryOverrideButton = window.document.querySelector('button[aria-label="烧录项 1 仅本次替换 BIN"]');
+  assert.ok(temporaryOverrideButton);
+  await act(async () => temporaryOverrideButton.click());
+  assert.equal(window.document.querySelector(".custom-flash-save-state")?.textContent, "已保存");
+  await act(async () => setSelectValue(window, planSelect, promptOption.value));
+  assert.equal(window.document.querySelectorAll(".custom-flash-item").length, 1);
+
+  const promptFileButton = window.document.querySelector('button[aria-label="烧录项 1 为本次选择 BIN"]');
+  assert.ok(promptFileButton);
+  await act(async () => promptFileButton.click());
+  await act(async () => confirmPreviewButton.click());
+
   const runButton = buttonByText(window.document, "确认并烧录");
   assert.ok(runButton);
   await act(async () => runButton.click());
-  assert.equal(firstAddressInput.disabled, true);
+  const activeAddressInput = window.document.querySelector('input[aria-label="烧录项 1 十六进制绝对地址"]');
+  assert.ok(activeAddressInput);
+  assert.equal(activeAddressInput.disabled, true);
   assert.ok(buttonByText(window.document, "停止"));
   await waitFor(
     () => assert.match(window.document.body.textContent ?? "", /浏览器预览模式未调用本机烧录后端/),
     act
   );
   await waitFor(() => assert.match(window.document.body.textContent ?? "", /执行完成/), act);
+  assert.equal(confirmPreviewButton.disabled, true);
+  assert.match(window.document.body.textContent ?? "", /本次执行前必须选择文件/);
 });

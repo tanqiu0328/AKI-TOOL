@@ -1160,6 +1160,50 @@ textarea:focus {
   overflow: auto;
 }
 
+.custom-flash-plan-toolbar {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+  padding: 10px;
+  background: #f8fbff;
+  border: 1px solid #c8d9f4;
+  border-radius: 8px;
+}
+
+.custom-flash-save-state {
+  align-self: center;
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.custom-flash-save-state.saved {
+  color: #167653;
+  background: #e9f8f1;
+}
+
+.custom-flash-save-state.dirty {
+  color: #8c5717;
+  background: #fff4db;
+}
+
+.custom-flash-plan-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.command-button.danger {
+  color: #9f2f39;
+  background: var(--red-soft);
+  border-color: #ffd3d9;
+}
+
 .custom-flash-list {
   display: grid;
   gap: 10px;
@@ -1193,6 +1237,10 @@ textarea:focus {
 
 .custom-flash-file {
   grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.custom-flash-file.fixed:has(button + button) {
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
 .custom-flash-add {

@@ -1,4 +1,5 @@
 import type {
+  CustomFlashPlan,
   CustomFlashRequest,
   EspAction,
   EspActionFinishedEvent,
@@ -6,7 +7,11 @@ import type {
   EspConfig,
   EspToolAdapter
 } from "../shared/espToolContract.cjs";
-import { validateCustomFlashItems } from "../shared/customFlash.ts";
+import {
+  removeCustomFlashPlan,
+  upsertCustomFlashPlan,
+  validateCustomFlashItems
+} from "../shared/customFlash.ts";
 
 export const previewEspConfig: EspConfig = {
   chip: "esp32",
@@ -60,6 +65,7 @@ export function createPreviewEspToolAdapter(
   }
 ): EspToolAdapter {
   let config = { ...previewEspConfig };
+  let customFlashPlans: CustomFlashPlan[] = [];
   let runningId = "";
   const outputListeners = new Set<(event: EspActionOutputEvent) => void>();
   const finishedListeners = new Set<(event: EspActionFinishedEvent) => void>();
@@ -126,6 +132,17 @@ export function createPreviewEspToolAdapter(
       size: filePath ? 4096 : 0,
       exists: Boolean(filePath)
     }),
+    listCustomFlashPlans: async () => structuredClone(customFlashPlans),
+    saveCustomFlashPlan: async (plan) => {
+      const { plans, savedPlan } = upsertCustomFlashPlan(customFlashPlans, plan);
+      customFlashPlans = plans;
+      return structuredClone(savedPlan);
+    },
+    deleteCustomFlashPlan: async (planId) => {
+      const result = removeCustomFlashPlan(customFlashPlans, planId);
+      customFlashPlans = result.plans;
+      return result.deleted;
+    },
     runCustomFlash: async (request: CustomFlashRequest) => {
       const enabledItems = validateCustomFlashItems(request.items);
       config = { ...request.config };

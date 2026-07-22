@@ -11,8 +11,13 @@ import {
   type LowerBoardSimConfig,
   type LowerBoardSimulationStorage
 } from "../shared/lowerBoardSimulation.js";
-import { validateCustomFlashItems } from "../shared/customFlash.js";
-import type { CustomFlashRequest, EspAction, EspConfig } from "../shared/espToolContract.cjs";
+import {
+  removeCustomFlashPlan,
+  upsertCustomFlashPlan,
+  validateCustomFlashItems,
+  validateCustomFlashPlan
+} from "../shared/customFlash.js";
+import type { CustomFlashPlan, CustomFlashRequest, EspAction, EspConfig } from "../shared/espToolContract.cjs";
 import {
   createElectronLowerBoardSimAdapter,
   createSerialPortLowerBoardSimulationTransport
@@ -112,6 +117,10 @@ function getLowerBoardSimConfigPath() {
   return path.join(app.getPath("userData"), "lower-board-sim.config.json");
 }
 
+function getCustomFlashPlansPath() {
+  return path.join(app.getPath("userData"), "custom-flash-plans.json");
+}
+
 function readJsonFile<T>(filePath: string, fallback: T): T {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
@@ -168,6 +177,42 @@ function writeUserConfig(config: Partial<EspConfig>) {
   const sanitized = sanitizeConfig(config);
   fs.writeFileSync(getUserConfigPath(), JSON.stringify(sanitized, null, 2), "utf8");
   return sanitized;
+}
+
+function readCustomFlashPlans() {
+  const storedPlans = readJsonFile<unknown>(getCustomFlashPlansPath(), []);
+  if (!Array.isArray(storedPlans)) {
+    return [];
+  }
+
+  return storedPlans.flatMap((plan) => {
+    try {
+      return [validateCustomFlashPlan(plan as CustomFlashPlan)];
+    } catch {
+      return [];
+    }
+  });
+}
+
+function writeCustomFlashPlans(plans: CustomFlashPlan[]) {
+  const plansPath = getCustomFlashPlansPath();
+  fs.mkdirSync(path.dirname(plansPath), { recursive: true });
+  fs.writeFileSync(plansPath, JSON.stringify(plans, null, 2), "utf8");
+}
+
+function saveCustomFlashPlan(plan: CustomFlashPlan) {
+  const { plans, savedPlan } = upsertCustomFlashPlan(readCustomFlashPlans(), plan);
+  writeCustomFlashPlans(plans);
+  return savedPlan;
+}
+
+function deleteCustomFlashPlan(planId: string) {
+  const result = removeCustomFlashPlan(readCustomFlashPlans(), planId);
+  if (!result.deleted) {
+    return false;
+  }
+  writeCustomFlashPlans(result.plans);
+  return true;
 }
 
 function quotePowerShellString(value: string) {
@@ -568,6 +613,12 @@ ipcMain.handle("esp:save-config", (_event, config: Partial<EspConfig>) => ({
 ipcMain.handle("esp:list-ports", runListPorts);
 
 ipcMain.handle("esp:inspect-custom-flash-file", (_event, filePath: string) => inspectCustomFlashFile(filePath));
+
+ipcMain.handle("esp:list-custom-flash-plans", () => readCustomFlashPlans());
+
+ipcMain.handle("esp:save-custom-flash-plan", (_event, plan: CustomFlashPlan) => saveCustomFlashPlan(plan));
+
+ipcMain.handle("esp:delete-custom-flash-plan", (_event, planId: string) => deleteCustomFlashPlan(planId));
 
 ipcMain.handle("esp:run-action", (_event, payload: { action: EspAction; config: Partial<EspConfig> }) => {
   ensureNoRunningAction();

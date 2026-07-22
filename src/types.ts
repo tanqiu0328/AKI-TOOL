@@ -19,6 +19,9 @@ export type { LowerBoardSimPortInfo as SerialPortInfo } from "../shared/lowerBoa
 export type {
   CustomFlashFileInspection,
   CustomFlashItem,
+  CustomFlashPlan,
+  CustomFlashPlanFileSource,
+  CustomFlashPlanItem,
   CustomFlashRequest,
   CustomFlashRequestItem,
   EspAction,
