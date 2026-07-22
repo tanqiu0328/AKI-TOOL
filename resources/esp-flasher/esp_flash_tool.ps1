@@ -15,6 +15,7 @@ param(
     [string]$CustomFlashFile = "",
     [string]$CustomFlashAddress = "",
     [long]$ExpectedCustomFlashSize = -1,
+    [string]$CustomFlashItemsJson = "",
 
     [switch]$SkipBuild,
     [switch]$AutoPort,
@@ -249,6 +250,30 @@ function Get-Settings {
         $customFlashFileValue = Resolve-AbsolutePath $customFlashFileValue
     }
 
+    $customFlashItems = @()
+    if (-not [string]::IsNullOrWhiteSpace($CustomFlashItemsJson)) {
+        try {
+            $decodedItems = $CustomFlashItemsJson | ConvertFrom-Json
+            foreach ($decodedItem in $decodedItems) {
+                $customFlashItems += [pscustomobject]@{
+                    Name = [string]$decodedItem.name
+                    FilePath = Resolve-AbsolutePath ([string]$decodedItem.filePath)
+                    Address = [string]$decodedItem.address
+                    ExpectedFileSize = [long]$decodedItem.expectedFileSize
+                }
+            }
+        } catch {
+            throw "自定义烧录项 JSON 无效: $($_.Exception.Message)"
+        }
+    } elseif (-not [string]::IsNullOrWhiteSpace($customFlashFileValue)) {
+        $customFlashItems = @([pscustomobject]@{
+            Name = "自定义烧录项"
+            FilePath = $customFlashFileValue
+            Address = $CustomFlashAddress
+            ExpectedFileSize = $ExpectedCustomFlashSize
+        })
+    }
+
     return [pscustomobject]@{
         Action = $Action
         ScriptRoot = $scriptRoot
@@ -267,6 +292,7 @@ function Get-Settings {
         CustomFlashFile = $customFlashFileValue
         CustomFlashAddress = $CustomFlashAddress
         ExpectedCustomFlashSize = $ExpectedCustomFlashSize
+        CustomFlashItems = $customFlashItems
         SkipBuild = [bool]$SkipBuild
         DryRun = [bool]$DryRun
         NoPause = [bool]$NoPause
@@ -720,36 +746,69 @@ function Invoke-CustomFlash {
         [string]$ResolvedPort
     )
 
-    if ([string]::IsNullOrWhiteSpace($Settings.CustomFlashFile) -or
-        -not (Test-Path -LiteralPath $Settings.CustomFlashFile -PathType Leaf)) {
-        throw "自定义烧录文件不存在: $($Settings.CustomFlashFile)"
-    }
-    $currentFileSize = (Get-Item -LiteralPath $Settings.CustomFlashFile).Length
-    if (($Settings.ExpectedCustomFlashSize -ge 0) -and
-        ($currentFileSize -ne $Settings.ExpectedCustomFlashSize)) {
-        throw "自定义烧录文件大小已变化: 确认时 $($Settings.ExpectedCustomFlashSize) 字节，当前 $currentFileSize 字节"
-    }
-    if ($Settings.CustomFlashAddress -notmatch "^0x[0-9a-fA-F]+$") {
-        throw "自定义烧录地址无效: $($Settings.CustomFlashAddress)"
+    if ($Settings.CustomFlashItems.Count -eq 0) {
+        throw "请至少启用一个自定义烧录项"
     }
 
-    $addressValue = [Convert]::ToUInt64($Settings.CustomFlashAddress.Substring(2), 16)
-    if (($addressValue % 4096) -ne 0) {
-        throw "自定义烧录地址必须按 4 KiB 对齐: $($Settings.CustomFlashAddress)"
+    $validatedItems = New-Object System.Collections.Generic.List[object]
+    foreach ($item in $Settings.CustomFlashItems) {
+        if ([string]::IsNullOrWhiteSpace($item.FilePath) -or
+            -not (Test-Path -LiteralPath $item.FilePath -PathType Leaf)) {
+            throw "自定义烧录项 [$($item.Name)] 的文件不存在: $($item.FilePath)"
+        }
+        $currentFileSize = (Get-Item -LiteralPath $item.FilePath).Length
+        if ($currentFileSize -le 0) {
+            throw "自定义烧录项 [$($item.Name)] 的文件大小必须大于 0 字节"
+        }
+        if (($item.ExpectedFileSize -ge 0) -and
+            ($currentFileSize -ne $item.ExpectedFileSize)) {
+            throw "自定义烧录项 [$($item.Name)] 的文件大小已变化: 确认时 $($item.ExpectedFileSize) 字节，当前 $currentFileSize 字节"
+        }
+        if ($item.Address -notmatch "^0x[0-9a-fA-F]+$") {
+            throw "自定义烧录项 [$($item.Name)] 的地址无效: $($item.Address)"
+        }
+
+        $addressValue = [Convert]::ToUInt64($item.Address.Substring(2), 16)
+        if (($addressValue % 4096) -ne 0) {
+            throw "自定义烧录项 [$($item.Name)] 的地址必须按 4 KiB 对齐: $($item.Address)"
+        }
+
+        $validatedItems.Add([pscustomobject]@{
+            Name = $item.Name
+            FilePath = $item.FilePath
+            Address = $item.Address
+            StartAddress = $addressValue
+            EndAddressExclusive = $addressValue + [uint64]$currentFileSize
+        })
+    }
+
+    for ($leftIndex = 0; $leftIndex -lt $validatedItems.Count; $leftIndex++) {
+        for ($rightIndex = $leftIndex + 1; $rightIndex -lt $validatedItems.Count; $rightIndex++) {
+            $left = $validatedItems[$leftIndex]
+            $right = $validatedItems[$rightIndex]
+            if (($left.StartAddress -lt $right.EndAddressExclusive) -and
+                ($right.StartAddress -lt $left.EndAddressExclusive)) {
+                throw "自定义烧录项 [$($left.Name)] 与 [$($right.Name)] 的地址范围重叠"
+            }
+        }
     }
 
     Write-Step "准备自定义烧录"
     Write-Info "芯片: $($Settings.Chip)"
     Write-Info "串口: $ResolvedPort"
-    Write-Info "文件: $($Settings.CustomFlashFile)"
-    Write-Info "地址: $($Settings.CustomFlashAddress)"
+    foreach ($item in $validatedItems) {
+        Write-Info "烧录项: $($item.Name)"
+        Write-Info "文件: $($item.FilePath)"
+        Write-Info "地址: $($item.Address)"
+    }
+    Write-Warn "多项写入不具备事务式回滚；中途失败时设备可能处于部分写入状态。"
 
     if (-not $Settings.DryRun) {
         Assert-SerialPortAvailable -Name $ResolvedPort -BaudRate $Settings.Baud
         Assert-PythonSerialPortAvailable `
             -Name $ResolvedPort `
             -BaudRate $Settings.Baud `
-            -WorkingDirectory (Split-Path -Parent $Settings.CustomFlashFile) `
+            -WorkingDirectory (Split-Path -Parent $validatedItems[0].FilePath) `
             -Settings $Settings
     }
 
@@ -761,12 +820,15 @@ function Invoke-CustomFlash {
     Write-Step "烧录自定义烧录项"
     $before = Get-BeforeResetMode -Settings $Settings
     $after = Get-AfterResetMode -Settings $Settings
-    $escapedFile = $Settings.CustomFlashFile.Replace('"', '""')
+    $flashPairs = @($validatedItems | ForEach-Object {
+        $escapedFile = $_.FilePath.Replace('"', '""')
+        "$($_.Address) `"$escapedFile`""
+    }) -join " "
     $flashCommand = "python -m esptool --chip $($Settings.Chip) -p $ResolvedPort " +
         "-b $($Settings.Baud) --before $before --after $after " +
-        "write_flash $($Settings.CustomFlashAddress) `"$escapedFile`""
+        "write_flash $flashPairs"
     Invoke-CommandLine `
-        -WorkingDirectory (Split-Path -Parent $Settings.CustomFlashFile) `
+        -WorkingDirectory (Split-Path -Parent $validatedItems[0].FilePath) `
         -CommandLine $flashCommand `
         -Settings $Settings
 

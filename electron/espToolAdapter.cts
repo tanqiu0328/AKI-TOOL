@@ -23,7 +23,10 @@ function createElectronEspToolAdapter(ipcRenderer: ElectronEspIpcRenderer): EspT
         EspToolAdapter["inspectCustomFlashFile"]
       >,
     runCustomFlash: (request) =>
-      ipcRenderer.invoke("esp:run-custom-flash", request) as ReturnType<EspToolAdapter["runCustomFlash"]>,
+      ipcRenderer.invoke("esp:run-custom-flash", {
+        ...request,
+        items: request.items.filter((item) => item.enabled)
+      }) as ReturnType<EspToolAdapter["runCustomFlash"]>,
     stopAction: () => ipcRenderer.invoke("esp:stop-action") as ReturnType<EspToolAdapter["stopAction"]>,
     onActionOutput: (callback) => {
       const listener = (_event: unknown, payload: unknown) => callback(payload as EspActionOutputEvent);

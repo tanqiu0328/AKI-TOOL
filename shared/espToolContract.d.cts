@@ -39,6 +39,11 @@ export type CustomFlashItem = {
   name: string;
   filePath: string;
   address: string;
+  enabled: boolean;
+};
+
+export type CustomFlashRequestItem = CustomFlashItem & {
+  expectedFileSize: number;
 };
 
 export type CustomFlashFileInspection = {
@@ -50,8 +55,7 @@ export type CustomFlashFileInspection = {
 
 export type CustomFlashRequest = {
   config: EspConfig;
-  item: CustomFlashItem;
-  expectedFileSize: number;
+  items: CustomFlashRequestItem[];
 };
 
 export type EspToolAdapter = {

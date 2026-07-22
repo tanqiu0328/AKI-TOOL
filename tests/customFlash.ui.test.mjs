@@ -31,7 +31,7 @@ async function waitFor(assertion, act, timeoutMs = 5000) {
   throw lastError;
 }
 
-test("浏览器预览可完成单项自定义烧录流程", async (context) => {
+test("浏览器预览可编辑并批量执行多个自定义烧录项", async (context) => {
   const dom = new JSDOM("<!doctype html><html><body><div id=\"root\"></div></body></html>", {
     url: "http://127.0.0.1/"
   });
@@ -82,35 +82,88 @@ test("浏览器预览可完成单项自定义烧录流程", async (context) => {
   assert.ok(confirmPreviewButton);
   assert.equal(confirmPreviewButton.disabled, true);
 
-  const chooseFileButton = buttonByText(window.document, "选择固定 BIN");
-  assert.ok(chooseFileButton);
-  await act(async () => chooseFileButton.click());
+  const firstNameInput = window.document.querySelector('input[aria-label="烧录项 1 名称"]');
+  const firstAddressInput = window.document.querySelector('input[aria-label="烧录项 1 十六进制绝对地址"]');
+  const firstFileButton = window.document.querySelector('button[aria-label="烧录项 1 选择固定 BIN"]');
+  assert.ok(firstNameInput);
+  assert.ok(firstAddressInput);
+  assert.ok(firstFileButton);
+  await act(async () => setInputValue(window, firstNameInput, "出厂数据"));
+  await act(async () => firstFileButton.click());
+
+  const addButton = buttonByText(window.document, "添加烧录项");
+  assert.ok(addButton);
+  await act(async () => addButton.click());
+  assert.equal(window.document.querySelectorAll(".custom-flash-item").length, 2);
+
+  const secondNameInput = window.document.querySelector('input[aria-label="烧录项 2 名称"]');
+  const secondAddressInput = window.document.querySelector('input[aria-label="烧录项 2 十六进制绝对地址"]');
+  const secondFileButton = window.document.querySelector('button[aria-label="烧录项 2 选择固定 BIN"]');
+  assert.ok(secondNameInput);
+  assert.ok(secondAddressInput);
+  assert.ok(secondFileButton);
+  await act(async () => setInputValue(window, secondNameInput, "设备配置"));
+  await act(async () => setInputValue(window, secondAddressInput, "0x11000"));
+  await act(async () => secondFileButton.click());
+
+  await act(async () => addButton.click());
+  assert.equal(window.document.querySelectorAll(".custom-flash-item").length, 3);
+  const deleteThirdButton = window.document.querySelector('button[aria-label="删除烧录项 3"]');
+  assert.ok(deleteThirdButton);
+  await act(async () => deleteThirdButton.click());
+  assert.equal(window.document.querySelectorAll(".custom-flash-item").length, 2);
+
+  const enabledInputs = window.document.querySelectorAll('input[type="checkbox"][aria-label*="临时启用"]');
+  assert.equal(enabledInputs.length, 2);
+  await act(async () => {
+    enabledInputs[0].click();
+    enabledInputs[1].click();
+  });
+  assert.equal(confirmPreviewButton.disabled, true);
+  await act(async () => {
+    enabledInputs[0].click();
+    enabledInputs[1].click();
+  });
+
+  await act(async () => setInputValue(window, secondAddressInput, "0x10000"));
+  await act(async () => confirmPreviewButton.click());
   await waitFor(() => {
-    const fileInput = window.document.querySelector("input[readonly]");
-    assert.ok(fileInput);
-    assert.equal(fileInput.value, "factory.bin");
+    const alert = window.document.querySelector('[role="alert"]');
+    assert.ok(alert);
+    assert.match(alert.textContent ?? "", /出厂数据/);
+    assert.match(alert.textContent ?? "", /设备配置/);
+    assert.match(alert.textContent ?? "", /地址范围重叠/);
   }, act);
 
-  const addressInput = window.document.querySelector('input[aria-label="十六进制绝对地址"]');
-  assert.ok(addressInput);
-  await act(async () => setInputValue(window, addressInput, "0x1001"));
-  assert.equal(confirmPreviewButton.disabled, true);
-  await act(async () => setInputValue(window, addressInput, "0x10000"));
-  assert.equal(confirmPreviewButton.disabled, false);
-
+  await act(async () => setInputValue(window, secondAddressInput, "0x11000"));
   await act(async () => confirmPreviewButton.click());
-  assert.match(window.document.body.textContent ?? "", /确认摘要/);
-  assert.match(window.document.body.textContent ?? "", /esp32/);
-  assert.match(window.document.body.textContent ?? "", /COM3/);
-  assert.match(window.document.body.textContent ?? "", /factory\.bin/);
-  assert.match(window.document.body.textContent ?? "", /4\.00 KiB/);
-  assert.match(window.document.body.textContent ?? "", /0x10000/);
-  assert.match(window.document.body.textContent ?? "", /0x10fff/i);
+  const summary = window.document.querySelector('[aria-label="确认摘要"]');
+  assert.ok(summary);
+  assert.equal(summary.querySelectorAll(".custom-flash-summary-item").length, 2);
+  assert.match(summary.textContent ?? "", /esp32/);
+  assert.match(summary.textContent ?? "", /COM3/);
+  assert.match(summary.textContent ?? "", /出厂数据/);
+  assert.match(summary.textContent ?? "", /设备配置/);
+  assert.match(summary.textContent ?? "", /4\.00 KiB/);
+  assert.match(summary.textContent ?? "", /0x10000/);
+  assert.match(summary.textContent ?? "", /0x10fff/i);
+  assert.match(summary.textContent ?? "", /0x11000/);
+  assert.match(summary.textContent ?? "", /0x11fff/i);
+
+  await act(async () => enabledInputs[0].click());
+  assert.equal(window.document.querySelector('[aria-label="确认摘要"]'), null);
+  await act(async () => confirmPreviewButton.click());
+  const enabledOnlySummary = window.document.querySelector('[aria-label="确认摘要"]');
+  assert.ok(enabledOnlySummary);
+  assert.equal(enabledOnlySummary.querySelectorAll(".custom-flash-summary-item").length, 1);
+  assert.doesNotMatch(enabledOnlySummary.textContent ?? "", /出厂数据/);
+  await act(async () => enabledInputs[0].click());
+  await act(async () => confirmPreviewButton.click());
 
   const runButton = buttonByText(window.document, "确认并烧录");
   assert.ok(runButton);
   await act(async () => runButton.click());
-  assert.equal(addressInput.disabled, true);
+  assert.equal(firstAddressInput.disabled, true);
   assert.ok(buttonByText(window.document, "停止"));
   await waitFor(
     () => assert.match(window.document.body.textContent ?? "", /浏览器预览模式未调用本机烧录后端/),

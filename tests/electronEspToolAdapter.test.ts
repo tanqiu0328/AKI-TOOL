@@ -1,9 +1,11 @@
 import { createRequire } from "node:module";
 import type {
+  CustomFlashRequestItem,
   EspConfig,
   EspConfigPayload,
   EspToolAdapter
 } from "../shared/espToolContract.d.cts";
+import { validateCustomFlashItems } from "../shared/customFlash.ts";
 import { defineEspToolAdapterContract } from "./espToolAdapterContract.ts";
 
 const require = createRequire(import.meta.url);
@@ -58,14 +60,18 @@ class TestEspIpcRenderer {
         };
       }
       case "esp:run-custom-flash": {
-        const request = args[0] as { config: EspConfig; item: { name: string; address: string } };
+        const request = args[0] as {
+          config: EspConfig;
+          items: CustomFlashRequestItem[];
+        };
+        const items = validateCustomFlashItems(request.items);
         this.config = { ...request.config };
         this.runningId = `electron-${this.nextId}`;
         this.nextId += 1;
         this.emit("esp:action-output", {
           id: this.runningId,
           stream: "stdout",
-          text: `${request.item.name} ${request.item.address}\n`
+          text: `${items.map((item) => `${item.name} ${item.address}`).join(" ")}\n`
         });
         return { id: this.runningId };
       }
@@ -129,17 +135,36 @@ defineEspToolAdapterContract(() => {
     adapter: createElectronEspToolAdapter(ipcRenderer),
     initialConfig,
     ports: ["COM9", "COM10"],
-    customFlashItem: {
-      name: "设备数据",
-      filePath: "C:\\images\\device.bin",
-      address: "0x10000"
-    },
-    customFlashInspection: {
-      filePath: "C:\\images\\device.bin",
-      fileName: "device.bin",
-      size: 8192,
-      exists: true
-    },
+    customFlashItems: [
+      {
+        name: "设备数据",
+        filePath: "C:\\images\\device.bin",
+        address: "0x10000",
+        enabled: true,
+        expectedFileSize: 8192
+      },
+      {
+        name: "校准数据",
+        filePath: "C:\\images\\calibration.bin",
+        address: "0x12000",
+        enabled: true,
+        expectedFileSize: 4096
+      }
+    ],
+    customFlashInspections: [
+      {
+        filePath: "C:\\images\\device.bin",
+        fileName: "device.bin",
+        size: 8192,
+        exists: true
+      },
+      {
+        filePath: "C:\\images\\calibration.bin",
+        fileName: "device.bin",
+        size: 8192,
+        exists: true
+      }
+    ],
     completeAction: async (id) => ipcRenderer.completeAction(id)
   };
 });

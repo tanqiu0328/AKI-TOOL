@@ -6,6 +6,7 @@ import type {
   EspConfig,
   EspToolAdapter
 } from "../shared/espToolContract.cjs";
+import { validateCustomFlashItems } from "../shared/customFlash.ts";
 
 export const previewEspConfig: EspConfig = {
   chip: "esp32",
@@ -79,12 +80,13 @@ export function createPreviewEspToolAdapter(
         }
       }, 120 + index * 90);
     });
+    const completionDelayMs = Math.max(1100, 210 + Math.max(0, lines.length - 1) * 90);
     dependencies.clock.setTimeout(() => {
       if (runningId === id) {
         runningId = "";
         emitFinished({ id, exitCode: 0, signal: null });
       }
-    }, 1100);
+    }, completionDelayMs);
   }
 
   const adapter: EspToolAdapter = {
@@ -125,6 +127,7 @@ export function createPreviewEspToolAdapter(
       exists: Boolean(filePath)
     }),
     runCustomFlash: async (request: CustomFlashRequest) => {
+      const enabledItems = validateCustomFlashItems(request.items);
       config = { ...request.config };
       const id = dependencies.createId();
       runningId = id;
@@ -133,9 +136,12 @@ export function createPreviewEspToolAdapter(
         `    芯片: ${config.chip}`,
         `    串口: ${config.port}`,
         `    波特率: ${config.baud}`,
-        `    自定义烧录项: ${request.item.name}`,
-        `    文件: ${request.item.filePath}`,
-        `    起始地址: ${request.item.address}`,
+        ...enabledItems.flatMap((item) => [
+          `    自定义烧录项: ${item.name}`,
+          `    文件: ${item.filePath}`,
+          `    起始地址: ${item.address}`
+        ]),
+        "警告: 多项写入不具备事务式回滚；中途失败时设备可能处于部分写入状态。",
         "",
         "浏览器预览模式未调用本机烧录后端。"
       ];

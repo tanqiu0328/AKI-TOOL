@@ -1157,11 +1157,33 @@ textarea:focus {
 
 .custom-flash-panel {
   padding: 14px;
-  overflow: visible;
+  overflow: auto;
+}
+
+.custom-flash-list {
+  display: grid;
+  gap: 10px;
+  max-height: 390px;
+  overflow: auto;
+  padding-right: 3px;
+}
+
+.custom-flash-item {
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.custom-flash-item-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
 }
 
 .custom-flash-enabled {
-  margin-bottom: 10px;
+  margin: 0;
 }
 
 .custom-flash-form {
@@ -1173,6 +1195,11 @@ textarea:focus {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
+.custom-flash-add {
+  width: 100%;
+  margin-top: 10px;
+}
+
 .field-error {
   color: var(--red);
   font-size: 11px;
@@ -1181,7 +1208,18 @@ textarea:focus {
 
 .custom-flash-review {
   width: 100%;
-  margin-top: 12px;
+  margin-top: 10px;
+}
+
+.custom-flash-error {
+  margin: 10px 0 0;
+  padding: 9px 10px;
+  color: #8b1e1e;
+  background: #fff1f0;
+  border: 1px solid #efb3ae;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .custom-flash-summary {
@@ -1196,6 +1234,27 @@ textarea:focus {
   margin: 0 0 10px;
   color: var(--text-strong);
   font-size: 14px;
+}
+
+.custom-flash-summary-list {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  margin-top: 8px;
+  overflow: auto;
+}
+
+.custom-flash-summary-item {
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.custom-flash-summary-item h4 {
+  margin: 0 0 8px;
+  color: var(--text-strong);
+  font-size: 12px;
 }
 
 .custom-flash-summary dl {
@@ -1213,12 +1272,28 @@ textarea:focus {
   border-radius: 6px;
 }
 
+.custom-flash-summary-item dl div {
+  padding: 6px;
+}
+
 .custom-flash-summary dt,
 .custom-flash-summary dd {
   overflow: hidden;
   margin: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.custom-flash-warning {
+  margin: 10px 0 0;
+  padding: 8px 9px;
+  color: #7a4111;
+  background: #fff7e8;
+  border: 1px solid #efc781;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.45;
 }
 
 .custom-flash-summary dt {

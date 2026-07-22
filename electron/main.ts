@@ -11,6 +11,7 @@ import {
   type LowerBoardSimConfig,
   type LowerBoardSimulationStorage
 } from "../shared/lowerBoardSimulation.js";
+import { validateCustomFlashItems } from "../shared/customFlash.js";
 import type { CustomFlashRequest, EspAction, EspConfig } from "../shared/espToolContract.cjs";
 import {
   createElectronLowerBoardSimAdapter,
@@ -247,6 +248,7 @@ function getRunArgs(action: EspAction, config: EspConfig) {
 }
 
 function getCustomFlashRunArgs(request: CustomFlashRequest) {
+  const items = validateCustomFlashItems(request.items);
   return [
     "-Action",
     "CustomFlash",
@@ -259,12 +261,13 @@ function getCustomFlashRunArgs(request: CustomFlashRequest) {
     request.config.port,
     "-Baud",
     String(request.config.baud),
-    "-CustomFlashFile",
-    request.item.filePath,
-    "-CustomFlashAddress",
-    request.item.address,
-    "-ExpectedCustomFlashSize",
-    String(request.expectedFileSize)
+    "-CustomFlashItemsJson",
+    JSON.stringify(items.map(({ name, filePath, address, expectedFileSize }) => ({
+      name,
+      filePath,
+      address,
+      expectedFileSize
+    })))
   ];
 }
 
@@ -290,28 +293,21 @@ function inspectCustomFlashFile(filePath: string) {
 }
 
 function validateCustomFlashRequest(request: CustomFlashRequest) {
-  const inspection = inspectCustomFlashFile(request.item.filePath);
-  if (!inspection.exists) {
-    throw new Error(`自定义烧录文件不存在: ${request.item.filePath}`);
-  }
-  if (inspection.size !== request.expectedFileSize) {
-    throw new Error(
-      `自定义烧录文件大小已变化: 确认时 ${request.expectedFileSize} 字节，当前 ${inspection.size} 字节`
-    );
-  }
-  if (!/^0x[0-9a-f]+$/i.test(request.item.address)) {
-    throw new Error(`自定义烧录地址无效: ${request.item.address}`);
-  }
-
-  const address = Number.parseInt(request.item.address.slice(2), 16);
-  if (!Number.isSafeInteger(address) || address % 4096 !== 0) {
-    throw new Error(`自定义烧录地址必须按 4 KiB 对齐: ${request.item.address}`);
+  const items = validateCustomFlashItems(request.items);
+  for (const item of items) {
+    const inspection = inspectCustomFlashFile(item.filePath);
+    if (!inspection.exists) {
+      throw new Error(`自定义烧录项“${item.name}”的文件不存在: ${item.filePath}`);
+    }
+    if (inspection.size !== item.expectedFileSize) {
+      throw new Error(
+        `自定义烧录项“${item.name}”的文件大小已变化: 确认时 ${item.expectedFileSize} 字节，当前 ${inspection.size} 字节`
+      );
+    }
   }
   if (!request.config.port) {
     throw new Error("请先选择 ESP 串口。");
   }
-
-  return inspection;
 }
 
 async function runListPorts() {

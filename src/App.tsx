@@ -655,7 +655,7 @@ function App() {
     await startEspOperation(
       "CustomFlash",
       "自定义烧录",
-      `==> 自定义烧录\n自定义烧录项: ${request.item.name}\n`,
+      `==> 自定义烧录\n${request.items.map((item) => `自定义烧录项: ${item.name}`).join("\n")}\n`,
       () => api.esp.runCustomFlash(request)
     );
   }

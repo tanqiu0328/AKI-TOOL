@@ -20,6 +20,7 @@ export type {
   CustomFlashFileInspection,
   CustomFlashItem,
   CustomFlashRequest,
+  CustomFlashRequestItem,
   EspAction,
   EspActionFinishedEvent as ActionFinishedEvent,
   EspActionOutputEvent as ActionOutputEvent,

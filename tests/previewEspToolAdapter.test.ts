@@ -18,18 +18,37 @@ defineEspToolAdapterContract(() => {
     adapter: harness.adapter,
     initialConfig: previewEspConfig,
     ports: ["COM3", "COM6"],
-    customFlashItem: {
-      name: "出厂数据",
-      filePath: "C:\\preview\\factory.bin",
-      address: "0x9000"
-    },
-    customFlashInspection: {
-      filePath: "C:\\preview\\factory.bin",
-      fileName: "factory.bin",
-      size: 4096,
-      exists: true
-    },
-    completeAction: async () => harness.advanceBy(1100)
+    customFlashItems: [
+      {
+        name: "出厂数据",
+        filePath: "C:\\preview\\factory.bin",
+        address: "0x9000",
+        enabled: true,
+        expectedFileSize: 4096
+      },
+      {
+        name: "设备配置",
+        filePath: "C:\\preview\\config.bin",
+        address: "0xa000",
+        enabled: true,
+        expectedFileSize: 4096
+      }
+    ],
+    customFlashInspections: [
+      {
+        filePath: "C:\\preview\\factory.bin",
+        fileName: "factory.bin",
+        size: 4096,
+        exists: true
+      },
+      {
+        filePath: "C:\\preview\\config.bin",
+        fileName: "config.bin",
+        size: 4096,
+        exists: true
+      }
+    ],
+    completeAction: async () => harness.advanceBy(2000)
   };
 });
 
