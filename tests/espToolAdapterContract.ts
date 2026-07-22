@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
+  CustomFlashFileInspection,
+  CustomFlashItem,
   EspActionFinishedEvent,
   EspActionOutputEvent,
   EspConfig,
@@ -11,6 +13,8 @@ export type EspToolAdapterFixture = {
   adapter: EspToolAdapter;
   initialConfig: EspConfig;
   ports: string[];
+  customFlashItem: CustomFlashItem;
+  customFlashInspection: CustomFlashFileInspection;
   completeAction: (id: string) => Promise<void>;
 };
 
@@ -55,6 +59,27 @@ export function defineEspToolAdapterContract(createFixture: () => EspToolAdapter
     const nextAction = await fixture.adapter.runAction("Build", fixture.initialConfig);
     await fixture.completeAction(nextAction.id);
     assert.equal(outputEvents.length + finishedEvents.length, eventCount);
+  });
+
+  test("ESP 工具适配器契约统一单项自定义烧录", async () => {
+    const fixture = createFixture();
+    const outputEvents: EspActionOutputEvent[] = [];
+    const finishedEvents: EspActionFinishedEvent[] = [];
+    fixture.adapter.onActionOutput((event) => outputEvents.push(event));
+    fixture.adapter.onActionFinished((event) => finishedEvents.push(event));
+
+    const inspection = await fixture.adapter.inspectCustomFlashFile(fixture.customFlashItem.filePath);
+    const action = await fixture.adapter.runCustomFlash({
+      config: fixture.initialConfig,
+      item: fixture.customFlashItem,
+      expectedFileSize: fixture.customFlashInspection.size
+    });
+    await fixture.completeAction(action.id);
+
+    assert.deepEqual(inspection, fixture.customFlashInspection);
+    assert.ok(outputEvents.some((event) => event.id === action.id && event.text.includes(fixture.customFlashItem.name)));
+    assert.ok(outputEvents.some((event) => event.id === action.id && event.text.includes(fixture.customFlashItem.address)));
+    assert.deepEqual(finishedEvents, [{ id: action.id, exitCode: 0, signal: null }]);
   });
 
   test("ESP 工具适配器契约统一动作停止语义", async () => {

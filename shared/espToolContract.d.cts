@@ -35,11 +35,32 @@ export type EspActionFinishedEvent = {
   signal: string | null;
 };
 
+export type CustomFlashItem = {
+  name: string;
+  filePath: string;
+  address: string;
+};
+
+export type CustomFlashFileInspection = {
+  filePath: string;
+  fileName: string;
+  size: number;
+  exists: boolean;
+};
+
+export type CustomFlashRequest = {
+  config: EspConfig;
+  item: CustomFlashItem;
+  expectedFileSize: number;
+};
+
 export type EspToolAdapter = {
   getConfig: () => Promise<EspConfigPayload>;
   saveConfig: (config: EspConfig) => Promise<{ config: EspConfig; configPath: string }>;
   listPorts: () => Promise<string[]>;
   runAction: (action: EspAction, config: EspConfig) => Promise<{ id: string }>;
+  inspectCustomFlashFile: (filePath: string) => Promise<CustomFlashFileInspection>;
+  runCustomFlash: (request: CustomFlashRequest) => Promise<{ id: string }>;
   stopAction: () => Promise<boolean>;
   onActionOutput: (callback: (event: EspActionOutputEvent) => void) => () => void;
   onActionFinished: (callback: (event: EspActionFinishedEvent) => void) => () => void;

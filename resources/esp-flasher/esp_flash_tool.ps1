@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-    [ValidateSet("Flash", "Build", "Erase", "Monitor", "Doctor", "ListPorts")]
+    [ValidateSet("Flash", "CustomFlash", "Build", "Erase", "Monitor", "Doctor", "ListPorts")]
     [string]$Action = "Flash",
 
     [string]$Port = "",
@@ -12,6 +12,9 @@ param(
     [string]$FirmwareDir = "",
     [string]$Config = "",
     [string]$LogDir = "",
+    [string]$CustomFlashFile = "",
+    [string]$CustomFlashAddress = "",
+    [long]$ExpectedCustomFlashSize = -1,
 
     [switch]$SkipBuild,
     [switch]$AutoPort,
@@ -49,6 +52,7 @@ function Get-ActionLabel {
 
     switch ($Name) {
         "Flash" { return "烧录" }
+        "CustomFlash" { return "自定义烧录" }
         "Build" { return "编译" }
         "Erase" { return "擦除" }
         "Monitor" { return "串口监视" }
@@ -240,6 +244,11 @@ function Get-Settings {
         $openMonitorValue = $true
     }
 
+    $customFlashFileValue = $CustomFlashFile
+    if (-not [string]::IsNullOrWhiteSpace($customFlashFileValue)) {
+        $customFlashFileValue = Resolve-AbsolutePath $customFlashFileValue
+    }
+
     return [pscustomobject]@{
         Action = $Action
         ScriptRoot = $scriptRoot
@@ -255,6 +264,9 @@ function Get-Settings {
         AutoPort = $autoPortValue
         ManualDownloadMode = $manualDownloadMode
         OpenMonitorAfterFlash = $openMonitorValue
+        CustomFlashFile = $customFlashFileValue
+        CustomFlashAddress = $CustomFlashAddress
+        ExpectedCustomFlashSize = $ExpectedCustomFlashSize
         SkipBuild = [bool]$SkipBuild
         DryRun = [bool]$DryRun
         NoPause = [bool]$NoPause
@@ -702,6 +714,65 @@ function Invoke-Flash {
     }
 }
 
+function Invoke-CustomFlash {
+    param(
+        [object]$Settings,
+        [string]$ResolvedPort
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Settings.CustomFlashFile) -or
+        -not (Test-Path -LiteralPath $Settings.CustomFlashFile -PathType Leaf)) {
+        throw "自定义烧录文件不存在: $($Settings.CustomFlashFile)"
+    }
+    $currentFileSize = (Get-Item -LiteralPath $Settings.CustomFlashFile).Length
+    if (($Settings.ExpectedCustomFlashSize -ge 0) -and
+        ($currentFileSize -ne $Settings.ExpectedCustomFlashSize)) {
+        throw "自定义烧录文件大小已变化: 确认时 $($Settings.ExpectedCustomFlashSize) 字节，当前 $currentFileSize 字节"
+    }
+    if ($Settings.CustomFlashAddress -notmatch "^0x[0-9a-fA-F]+$") {
+        throw "自定义烧录地址无效: $($Settings.CustomFlashAddress)"
+    }
+
+    $addressValue = [Convert]::ToUInt64($Settings.CustomFlashAddress.Substring(2), 16)
+    if (($addressValue % 4096) -ne 0) {
+        throw "自定义烧录地址必须按 4 KiB 对齐: $($Settings.CustomFlashAddress)"
+    }
+
+    Write-Step "准备自定义烧录"
+    Write-Info "芯片: $($Settings.Chip)"
+    Write-Info "串口: $ResolvedPort"
+    Write-Info "文件: $($Settings.CustomFlashFile)"
+    Write-Info "地址: $($Settings.CustomFlashAddress)"
+
+    if (-not $Settings.DryRun) {
+        Assert-SerialPortAvailable -Name $ResolvedPort -BaudRate $Settings.Baud
+        Assert-PythonSerialPortAvailable `
+            -Name $ResolvedPort `
+            -BaudRate $Settings.Baud `
+            -WorkingDirectory (Split-Path -Parent $Settings.CustomFlashFile) `
+            -Settings $Settings
+    }
+
+    Enter-DownloadMode -Settings $Settings
+    if (-not $Settings.DryRun) {
+        Assert-SerialPort -Name $ResolvedPort
+    }
+
+    Write-Step "烧录自定义烧录项"
+    $before = Get-BeforeResetMode -Settings $Settings
+    $after = Get-AfterResetMode -Settings $Settings
+    $escapedFile = $Settings.CustomFlashFile.Replace('"', '""')
+    $flashCommand = "python -m esptool --chip $($Settings.Chip) -p $ResolvedPort " +
+        "-b $($Settings.Baud) --before $before --after $after " +
+        "write_flash $($Settings.CustomFlashAddress) `"$escapedFile`""
+    Invoke-CommandLine `
+        -WorkingDirectory (Split-Path -Parent $Settings.CustomFlashFile) `
+        -CommandLine $flashCommand `
+        -Settings $Settings
+
+    Write-Step "完成"
+}
+
 function Invoke-Erase {
     param(
         [object]$Settings,
@@ -836,6 +907,10 @@ try {
             if ($settings.OpenMonitorAfterFlash) {
                 Invoke-Monitor -Settings $settings -ResolvedPort $resolvedPort
             }
+        }
+        "CustomFlash" {
+            $resolvedPort = Resolve-SerialPort -Settings $settings
+            Invoke-CustomFlash -Settings $settings -ResolvedPort $resolvedPort
         }
         "Erase" {
             $resolvedPort = Resolve-SerialPort -Settings $settings
